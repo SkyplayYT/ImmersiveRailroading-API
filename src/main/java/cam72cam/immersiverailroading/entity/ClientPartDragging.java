@@ -1,6 +1,7 @@
 package cam72cam.immersiverailroading.entity;
 
 import cam72cam.immersiverailroading.ConfigGraphics;
+import cam72cam.immersiverailroading.api.event.impl.ChangeControlGroupDragEvent;
 import cam72cam.immersiverailroading.library.ModelComponentType;
 import cam72cam.immersiverailroading.model.part.Control;
 import cam72cam.immersiverailroading.model.part.Interactable;
@@ -101,7 +102,7 @@ public class ClientPartDragging {
                 return;
             }
             if (start && released) {
-                ChangeControlGroupEvent event = new ChangeControlGroupEvent(control.controlGroup, (float) newValue, false, stockUUID, getPlayer()).call();
+                ChangeControlGroupDragEvent event = new ChangeControlGroupDragEvent(control.controlGroup, (float) newValue, false, stockUUID, getPlayer()).call();
                 if(!event.isCanceled()) {
                     stock.onDragStart(control);
                     stock.onDrag(control, event.getValue());
@@ -111,16 +112,16 @@ public class ClientPartDragging {
             }
 
             if (start) {
-                if(!new ChangeControlGroupEvent(control.controlGroup, (float) newValue, true, stockUUID, getPlayer()).call().isCanceled()) {
+                if (!new ChangeControlGroupDragEvent(control.controlGroup, (float) newValue, true, stockUUID, getPlayer()).call().isCanceled()) {
                     stock.onDragStart(control);
                 }
             } else if (released) {
-                if(!new ChangeControlGroupEvent(control.controlGroup, (float) newValue, false, stockUUID, getPlayer()).call().isCanceled()) {
+                if (!new ChangeControlGroupDragEvent(control.controlGroup, (float) newValue, false, stockUUID, getPlayer()).call().isCanceled()) {
                     stock.onDragRelease(control);
                 }
             } else {
-                ChangeControlGroupEvent event = new ChangeControlGroupEvent(control.controlGroup, (float) newValue, true, stockUUID, getPlayer()).call();
-                if(!event.isCanceled()) {
+                ChangeControlGroupDragEvent event = new ChangeControlGroupDragEvent(control.controlGroup, (float) newValue, true, stockUUID, getPlayer()).call();
+                if (!event.isCanceled()) {
                     stock.onDrag(control, event.getValue());
                 }
             }
