@@ -667,26 +667,38 @@ public class GuiBuilder {
         public void update(EntityRollingStock stock) {
             // TODO permissions!
             if (controlGroup != null) {
+                ChangeControlGroupInGuiEvent event = new ChangeControlGroupInGuiEvent(controlGroup, value, stockUUID, getPlayer());
                 switch (controlGroup) {
                     case "REVERSERFORWARD":
                         readout = Readouts.REVERSER;
-                        value = 1;
+                        event.setValue(1);
+                        if (event.isCanceled())
+                            return;
+                        value = event.getValue();
                         break;
                     case "REVERSERNEUTRAL":
                         readout = Readouts.REVERSER;
-                        value = 0.5f;
+                        event.setValue(0.5f);
+                        if (event.isCanceled())
+                            return;
+                        value = event.getValue();
                         break;
                     case "REVERSERBACKWARD":
                         readout = Readouts.REVERSER;
-                        value = 0;
+                        event.setValue(0);
+                        if (event.isCanceled())
+                            return;
+                        value = event.getValue();
                         break;
                     default:
-                        if (global) {
-                            ((EntityCoupleableRollingStock)stock).mapTrain((EntityCoupleableRollingStock) stock, false, target -> {
-                                target.setControlPosition(controlGroup, value);
-                            });
-                        } else {
-                            stock.setControlPosition(controlGroup, value);
+                        if (!event.isCanceled()) {
+                            if (global) {
+                                ((EntityCoupleableRollingStock) stock).mapTrain((EntityCoupleableRollingStock) stock, false, target -> {
+                                    target.setControlPosition(controlGroup, value);
+                                });
+                            } else {
+                                stock.setControlPosition(controlGroup, value);
+                            }
                         }
                         return;
                 }

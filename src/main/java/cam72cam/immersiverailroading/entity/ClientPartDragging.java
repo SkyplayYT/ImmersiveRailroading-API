@@ -101,18 +101,28 @@ public class ClientPartDragging {
                 return;
             }
             if (start && released) {
-                stock.onDragStart(control);
-                stock.onDrag(control, newValue);
-                stock.onDragRelease(control);
+                ChangeControlGroupEvent event = new ChangeControlGroupEvent(control.controlGroup, (float) newValue, false, stockUUID, getPlayer()).call();
+                if(!event.isCanceled()) {
+                    stock.onDragStart(control);
+                    stock.onDrag(control, event.getValue());
+                    stock.onDragRelease(control);
+                }
                 return;
             }
 
             if (start) {
-                stock.onDragStart(control);
+                if(!new ChangeControlGroupEvent(control.controlGroup, (float) newValue, true, stockUUID, getPlayer()).call().isCanceled()) {
+                    stock.onDragStart(control);
+                }
             } else if (released) {
-                stock.onDragRelease(control);
+                if(!new ChangeControlGroupEvent(control.controlGroup, (float) newValue, false, stockUUID, getPlayer()).call().isCanceled()) {
+                    stock.onDragRelease(control);
+                }
             } else {
-                stock.onDrag(control, newValue);
+                ChangeControlGroupEvent event = new ChangeControlGroupEvent(control.controlGroup, (float) newValue, true, stockUUID, getPlayer()).call();
+                if(!event.isCanceled()) {
+                    stock.onDrag(control, event.getValue());
+                }
             }
         }
     }
