@@ -12,6 +12,7 @@ import cam72cam.immersiverailroading.util.MergedBlocks;
 import cam72cam.mod.MinecraftClient;
 import cam72cam.mod.config.ConfigFile;
 import cam72cam.mod.entity.Entity;
+import cam72cam.mod.entity.Player;
 import cam72cam.mod.event.ClientEvents;
 import cam72cam.mod.gui.helpers.GUIHelpers;
 import cam72cam.mod.math.Vec3d;
@@ -640,6 +641,7 @@ public class GuiBuilder {
         private boolean global;
         @TagField
         private float value;
+        private Player player;
 
         @TagField
         private String texture_variant;
@@ -662,13 +664,15 @@ public class GuiBuilder {
         protected void handle() {
             EntityRollingStock stock = getWorld().getEntity(stockUUID, EntityRollingStock.class);
             if (stock != null) {
+                player = getPlayer(); //IDK why I need to do that, but it's necessary
                 update(stock);
             }
         }
         public void update(EntityRollingStock stock) {
             // TODO permissions!
             if (controlGroup != null) {
-                ChangeControlGroupInGuiEvent event = new ChangeControlGroupInGuiEvent(controlGroup, value, stockUUID, getPlayer());
+                ChangeControlGroupInGuiEvent event = new ChangeControlGroupInGuiEvent(controlGroup, value, stockUUID, player);
+                controlGroup = event.getName();
                 switch (controlGroup) {
                     case "REVERSERFORWARD":
                         readout = Readouts.REVERSER;
@@ -695,10 +699,10 @@ public class GuiBuilder {
                         if (!event.isCanceled()) {
                             if (global) {
                                 ((EntityCoupleableRollingStock) stock).mapTrain((EntityCoupleableRollingStock) stock, false, target -> {
-                                    target.setControlPosition(controlGroup, value);
+                                    target.setControlPosition(controlGroup, event.getValue());
                                 });
                             } else {
-                                stock.setControlPosition(controlGroup, value);
+                                stock.setControlPosition(controlGroup, event.getValue());
                             }
                         }
                         return;

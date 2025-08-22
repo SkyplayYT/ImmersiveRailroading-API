@@ -16,12 +16,14 @@ public class ChangeLuaControlGroupEvent extends CancelableEvent<ChangeLuaControl
         this.stockUUID = stockUUID;
     }
 
+    /**
+     *  Original CG won't be deleted!
+     */
     public void setName(String name) {
         this.name = name;
     }
 
     /**
-     *
      * @param value Only up to 1 and not smaller than 0
      */
     public void setValue(float value) {

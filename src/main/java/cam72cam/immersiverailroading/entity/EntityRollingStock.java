@@ -332,7 +332,11 @@ public class EntityRollingStock extends CustomEntity implements ITickable, IClic
 	}
 
 	public void setControlPressed(Control<?> control, boolean pressed) {
-		controlPositions.put(control.controlGroup, Pair.of(pressed, getControlPosition(control)));
+		setControlPressed(control.controlGroup, pressed);
+	}
+
+	public void setControlPressed(String control, boolean pressed) {
+		controlPositions.put(control, Pair.of(pressed, getControlPosition(control)));
 	}
 
 	public float getControlPosition(Control<?> control) {

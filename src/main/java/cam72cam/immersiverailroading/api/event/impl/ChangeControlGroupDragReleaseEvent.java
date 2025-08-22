@@ -5,16 +5,18 @@ import cam72cam.mod.entity.Player;
 
 import java.util.UUID;
 
-public class ChangeControlGroupInGuiEvent extends CancelableEvent<ChangeControlGroupInGuiEvent> {
+public class ChangeControlGroupDragReleaseEvent extends CancelableEvent<ChangeControlGroupDragReleaseEvent> {
 
     String name;
     float value;
+    final boolean pressed;
     final Player player;
     final UUID stockUUID;
 
-    public ChangeControlGroupInGuiEvent(String name, float value, UUID stockUUID, Player player) {
+    public ChangeControlGroupDragReleaseEvent(String name, float value, boolean pressed, UUID stockUUID, Player player) {
         this.name = name;
         this.value = value;
+        this.pressed = pressed;
         this.player = player;
         this.stockUUID = stockUUID;
     }
@@ -39,6 +41,10 @@ public class ChangeControlGroupInGuiEvent extends CancelableEvent<ChangeControlG
 
     public float getValue() {
         return value;
+    }
+
+    public boolean isPressed() {
+        return pressed;
     }
 
     public Player getPlayer() {
