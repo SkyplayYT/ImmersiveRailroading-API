@@ -9,6 +9,7 @@ import cam72cam.immersiverailroading.library.*;
 import cam72cam.immersiverailroading.model.part.Control;
 import cam72cam.immersiverailroading.registry.DefinitionManager;
 import cam72cam.immersiverailroading.registry.EntityRollingStockDefinition;
+import cam72cam.immersiverailroading.util.MathUtil;
 import cam72cam.mod.entity.*;
 import cam72cam.mod.entity.sync.TagSync;
 import cam72cam.mod.entity.custom.*;
@@ -85,6 +86,7 @@ public class EntityRollingStock extends CustomEntity implements ITickable, IClic
 		if (DefinitionManager.getDefinition(defID) == null) {
 			String error = String.format("Missing definition %s, do you have all of the required resource packs?", defID);
 			ImmersiveRailroading.error(error);
+			this.kill();
 			return error;
 		}
 		return null;
@@ -108,8 +110,7 @@ public class EntityRollingStock extends CustomEntity implements ITickable, IClic
 	@Override
 	public void onTick() {
 		if (getWorld().isServer && this.getTickCount() % 5 == 0) {
-			EntityRollingStockDefinition def = DefinitionManager.getDefinition(defID);
-			if (def == null) {
+			if (DefinitionManager.getDefinition(defID) == null) {
 				this.kill();
 			}
 		}
@@ -326,12 +327,12 @@ public class EntityRollingStock extends CustomEntity implements ITickable, IClic
 	}
 
 	public void setControlPosition(Control<?> control, float val) {
-		val = Math.min(1, Math.max(0, val));
+		val = MathUtil.clamp(val, 0, 1);
 		controlPositions.put(control.controlGroup, Pair.of(getControlPressed(control), val));
 	}
 
 	public void setControlPosition(String control, float val) {
-		val = Math.min(1, Math.max(0, val));
+		val = MathUtil.clamp(val, 0, 1);
 		controlPositions.put(control, Pair.of(false, val));
 	}
 

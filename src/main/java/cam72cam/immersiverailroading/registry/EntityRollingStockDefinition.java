@@ -31,7 +31,6 @@ import java.awt.geom.Path2D;
 import java.awt.geom.Rectangle2D;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
 import java.util.*;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -60,9 +59,10 @@ public abstract class EntityRollingStockDefinition {
     public Identifier collision_sound;
     public double flange_min_yaw;
     double internal_inv_scale;
-    private String name;
-    private String modelerName;
-    private String packName;
+    public String name;
+    public String modelerName;
+    public String packName;
+    protected Set<String> tags;
     private ValveGearConfig valveGear;
     public float darken;
     public Identifier modelLoc;
@@ -83,6 +83,7 @@ public abstract class EntityRollingStockDefinition {
     private double passengerCompartmentWidth;
     private double weight;
     private int maxPassengers;
+    private int snowLayers;
     private float interiorLightLevel;
     private boolean hasIndependentBrake;
     private boolean hasPressureBrake;
@@ -161,6 +162,8 @@ public abstract class EntityRollingStockDefinition {
         public final Identifier animatrix;
         public final float offset;
         public final boolean invert;
+        public final float rangeMin;
+        public final float rangeMax;
         public final float frames_per_tick;
         public final SoundDefinition sound;
 
@@ -175,6 +178,8 @@ public abstract class EntityRollingStockDefinition {
             mode = AnimationMode.valueOf(obj.getValue("mode").asString().toUpperCase(Locale.ROOT));
             offset = obj.getValue("offset").asFloat(0f);
             invert = obj.getValue("invert").asBoolean(false);
+            rangeMin = obj.getValue("range_min").asFloat(0f);
+            rangeMax = obj.getValue("range_max").asFloat(1f);
             frames_per_tick = obj.getValue("frames_per_tick").asFloat(1f);
             sound = SoundDefinition.getOrDefault(obj, "sound");
         }
@@ -190,6 +195,7 @@ public abstract class EntityRollingStockDefinition {
         public final float blinkIntervalSeconds;
         public final float blinkOffsetSeconds;
         public final boolean blinkFullBright;
+        public final boolean revertDirection;
         public final String reverseColor;
         public final Identifier lightTex;
         public final boolean castsLight;
@@ -198,6 +204,7 @@ public abstract class EntityRollingStockDefinition {
             blinkIntervalSeconds = data.getValue("blinkIntervalSeconds").asFloat(0f);
             blinkOffsetSeconds = data.getValue("blinkOffsetSeconds").asFloat(0f);
             blinkFullBright = data.getValue("blinkFullBright").asBoolean(true);
+            revertDirection = data.getValue("revertDirection").asBoolean(false);
             reverseColor = data.getValue("reverseColor").asString();
             lightTex = data.getValue("texture").asIdentifier(default_light_tex);
             castsLight = data.getValue("castsLight").asBoolean(true);
@@ -393,6 +400,12 @@ public abstract class EntityRollingStockDefinition {
         name = data.getValue("name").asString();
         modelerName = data.getValue("modeler").asString();
         packName = data.getValue("pack").asString();
+        tags = new HashSet<>();
+        List<DataBlock.Value> tagValues = data.getValues("tags");
+        if (tagValues != null) {
+            tagValues.forEach(v -> tags.add(v.asString()));
+        }
+
         darken = data.getValue("darken_model").asFloat();
         internal_model_scale = 1;
         internal_inv_scale = 1;
@@ -495,6 +508,8 @@ public abstract class EntityRollingStockDefinition {
         if (lights != null) {
             lights.getBlockMap().forEach((key, block) -> this.lights.put(key, new LightDefinition(block)));
         }
+
+        snowLayers = properties.getValue("snow_layers").asInteger();
 
         DataBlock sounds = data.getBlock("sounds");
         wheel_sound = sounds.getValue("wheels").asIdentifier();
@@ -806,6 +821,10 @@ public abstract class EntityRollingStockDefinition {
         tips.add(GuiText.WEIGHT_TOOLTIP.toString(this.getWeight(gauge)));
         tips.add(GuiText.MODELER_TOOLTIP.toString(modelerName));
         tips.add(GuiText.PACK_TOOLTIP.toString(packName));
+        if (!tags.isEmpty()) {
+            String tag = String.join(",", tags);
+            tips.add(GuiText.TAG_TOOLTIP.toString(tag));
+        }
         return tips;
     }
 
@@ -898,6 +917,9 @@ public abstract class EntityRollingStockDefinition {
 
     public double getBrakeShoeFriction() {
         return brakeCoefficient;
+    }
+    public int getSnowLayers() {
+        return snowLayers;
     }
 
 }
