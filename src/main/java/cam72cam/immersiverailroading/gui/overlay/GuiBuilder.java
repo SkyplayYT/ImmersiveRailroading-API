@@ -671,7 +671,7 @@ public class GuiBuilder {
         public void update(EntityRollingStock stock) {
             // TODO permissions!
             if (controlGroup != null) {
-                ChangeControlGroupInGuiEvent event = new ChangeControlGroupInGuiEvent(controlGroup, value, stockUUID, player);
+                ChangeControlGroupInGuiEvent event = new ChangeControlGroupInGuiEvent(controlGroup, value, stockUUID, player).call();
                 controlGroup = event.getName();
                 switch (controlGroup) {
                     case "REVERSERFORWARD":
