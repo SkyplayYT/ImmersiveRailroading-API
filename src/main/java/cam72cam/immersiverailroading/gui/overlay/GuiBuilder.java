@@ -1,6 +1,7 @@
 package cam72cam.immersiverailroading.gui.overlay;
 
 import cam72cam.immersiverailroading.ConfigGraphics;
+import cam72cam.immersiverailroading.api.event.impl.ChangeControlGroupInGuiEvent;
 import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.immersiverailroading.entity.EntityCoupleableRollingStock;
 import cam72cam.immersiverailroading.entity.EntityRollingStock;
@@ -14,6 +15,7 @@ import cam72cam.immersiverailroading.util.MergedBlocks;
 import cam72cam.mod.MinecraftClient;
 import cam72cam.mod.config.ConfigFile;
 import cam72cam.mod.entity.Entity;
+import cam72cam.mod.entity.Player;
 import cam72cam.mod.event.ClientEvents;
 import cam72cam.mod.gui.helpers.GUIHelpers;
 import cam72cam.mod.math.Vec3d;
@@ -701,6 +703,7 @@ public class GuiBuilder {
         private boolean global;
         @TagField
         private float value;
+        private Player player;
 
         @TagField
         private String texture_variant;
@@ -723,32 +726,46 @@ public class GuiBuilder {
         protected void handle() {
             EntityRollingStock stock = getWorld().getEntity(stockUUID, EntityRollingStock.class);
             if (stock != null) {
+                player = getPlayer(); //IDK why I need to do that, but it's necessary
                 update(stock);
             }
         }
         public void update(EntityRollingStock stock) {
             // TODO permissions!
             if (controlGroup != null) {
+                ChangeControlGroupInGuiEvent event = new ChangeControlGroupInGuiEvent(controlGroup, value, stockUUID, player).call();
+                controlGroup = event.getName();
                 switch (controlGroup) {
                     case "REVERSERFORWARD":
                         readout = Readouts.REVERSER;
-                        value = 1;
+                        event.setValue(1);
+                        if (event.isCanceled())
+                            return;
+                        value = event.getValue();
                         break;
                     case "REVERSERNEUTRAL":
                         readout = Readouts.REVERSER;
-                        value = 0.5f;
+                        event.setValue(0.5f);
+                        if (event.isCanceled())
+                            return;
+                        value = event.getValue();
                         break;
                     case "REVERSERBACKWARD":
                         readout = Readouts.REVERSER;
-                        value = 0;
+                        event.setValue(0);
+                        if (event.isCanceled())
+                            return;
+                        value = event.getValue();
                         break;
                     default:
-                        if (global) {
-                            ((EntityCoupleableRollingStock)stock).mapTrain((EntityCoupleableRollingStock) stock, false, target -> {
-                                target.setControlPosition(controlGroup, value);
-                            });
-                        } else {
-                            stock.setControlPosition(controlGroup, value);
+                        if (!event.isCanceled()) {
+                            if (global) {
+                                ((EntityCoupleableRollingStock) stock).mapTrain((EntityCoupleableRollingStock) stock, false, target -> {
+                                    target.setControlPosition(controlGroup, event.getValue());
+                                });
+                            } else {
+                                stock.setControlPosition(controlGroup, event.getValue());
+                            }
                         }
                         return;
                 }

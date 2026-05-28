@@ -1,6 +1,10 @@
 package cam72cam.immersiverailroading.entity;
 
 import cam72cam.immersiverailroading.ConfigGraphics;
+import cam72cam.immersiverailroading.api.event.impl.ChangeControlGroupClickEvent;
+import cam72cam.immersiverailroading.api.event.impl.ChangeControlGroupDragHoldEvent;
+import cam72cam.immersiverailroading.api.event.impl.ChangeControlGroupDragReleaseEvent;
+import cam72cam.immersiverailroading.api.event.impl.ChangeControlGroupDragStartEvent;
 import cam72cam.immersiverailroading.library.ModelComponentType;
 import cam72cam.immersiverailroading.library.ScrollMode;
 import cam72cam.immersiverailroading.model.part.Control;
@@ -108,18 +112,48 @@ public class ClientPartDragging {
                 return;
             }
             if (start && released) {
-                stock.onDragStart(control);
-                stock.onDrag(control, newValue);
-                stock.onDragRelease(control);
+                ChangeControlGroupClickEvent event = new ChangeControlGroupClickEvent(control.controlGroup, (float) newValue, false, stockUUID, getPlayer()).call();
+                if(!event.isCanceled()) {
+                    stock.setControlPressed(event.getName(), true);
+                    stock.setControlPosition(event.getName(), event.getValue());
+                    stock.setControlPressed(event.getName(), false);
+
+                    if (control.toggle) {
+                        float controlPos = stock.getControlPosition(event.getName());
+                        stock.setControlPosition(event.getName(), Math.abs(controlPos - 1));
+                    }
+                    if (control.press) {
+                        stock.setControlPosition(event.getName(), 0);
+                    }
+                }
                 return;
             }
 
             if (start) {
-                stock.onDragStart(control);
+                ChangeControlGroupDragStartEvent event = new ChangeControlGroupDragStartEvent(control.controlGroup, stock.getControlPosition(control.controlGroup), true, stockUUID, getPlayer()).call();
+                if (!event.isCanceled()) {
+                    stock.setControlPressed(event.getName(), true);
+                    stock.setControlPosition(event.getName(), event.getValue());
+                }
             } else if (released) {
-                stock.onDragRelease(control);
+                ChangeControlGroupDragReleaseEvent event = new ChangeControlGroupDragReleaseEvent(control.controlGroup, stock.getControlPosition(control.controlGroup), false, stockUUID, getPlayer()).call();
+                if (!event.isCanceled()) {
+                    stock.setControlPressed(event.getName(), false);
+
+                    if (control.toggle) {
+                        float controlPos = stock.getControlPosition(event.getName());
+                        stock.setControlPosition(event.getName(), Math.abs(controlPos - 1));
+                    }
+                    if (control.press) {
+                        stock.setControlPosition(event.getName(), 0);
+                    }
+                }
             } else {
-                stock.onDrag(control, newValue);
+                ChangeControlGroupDragHoldEvent event = new ChangeControlGroupDragHoldEvent(control.controlGroup, (float) newValue, true, stockUUID, getPlayer()).call();
+                if (!event.isCanceled()) {
+                    stock.setControlPressed(event.getName(), true); //Redundant call?
+                    stock.setControlPosition(event.getName(), event.getValue());
+                }
             }
         }
     }

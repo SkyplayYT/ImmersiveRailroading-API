@@ -2,6 +2,7 @@ package cam72cam.immersiverailroading.script.modules;
 
 import cam72cam.immersiverailroading.ConfigSound;
 import cam72cam.immersiverailroading.ImmersiveRailroading;
+import cam72cam.immersiverailroading.api.event.impl.ChangeLuaControlGroupEvent;
 import cam72cam.immersiverailroading.entity.*;
 import cam72cam.immersiverailroading.gui.overlay.Readouts;
 import cam72cam.immersiverailroading.gui.overlay.Stat;
@@ -33,10 +34,11 @@ public class IRModule implements LuaModule {
 
     @LuaFunction(module = "IR")
     public void setCG(LuaValue ctrl, LuaValue value) {
-        String control = ctrl.tojstring();
-        float val = value.tofloat();
+        ChangeLuaControlGroupEvent event = new ChangeLuaControlGroupEvent(ctrl.tojstring(), value.tofloat(), stock.getUUID()).call();
+        if(event.isCanceled())
+            return;
 
-        stock.setControlPosition(control, val);
+        stock.setControlPosition(event.getName(), event.getValue());
     }
 
     @LuaFunction(module = "IR")
