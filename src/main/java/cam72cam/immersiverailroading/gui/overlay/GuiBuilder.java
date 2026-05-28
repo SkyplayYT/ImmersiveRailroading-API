@@ -1,12 +1,15 @@
 package cam72cam.immersiverailroading.gui.overlay;
 
 import cam72cam.immersiverailroading.ConfigGraphics;
+import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.immersiverailroading.entity.EntityCoupleableRollingStock;
 import cam72cam.immersiverailroading.entity.EntityRollingStock;
+import cam72cam.immersiverailroading.entity.EntityScriptableRollingStock;
 import cam72cam.immersiverailroading.entity.LocomotiveDiesel;
 import cam72cam.immersiverailroading.library.GuiText;
 import cam72cam.immersiverailroading.registry.EntityRollingStockDefinition;
 import cam72cam.immersiverailroading.util.DataBlock;
+import cam72cam.immersiverailroading.util.MathUtil;
 import cam72cam.immersiverailroading.util.MergedBlocks;
 import cam72cam.mod.MinecraftClient;
 import cam72cam.mod.config.ConfigFile;
@@ -24,6 +27,7 @@ import cam72cam.mod.serialization.TagField;
 import util.Matrix4;
 
 import javax.imageio.ImageIO;
+
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -42,6 +46,9 @@ public class GuiBuilder {
 
     private final String text;
     private final float textHeight;
+    
+    private final String luaTextID;
+    private final float luaTextHeight;
 
     private final Readouts readout;
     private final String control;
@@ -151,6 +158,16 @@ public class GuiBuilder {
             text = null;
             textHeight = 0;
         }
+        
+        // Lua Text stuff
+        DataBlock luaTxt = data.getBlock("lua_text");
+        if (luaTxt != null) {
+            luaTextID = luaTxt.getValue("key").asString();
+            luaTextHeight = luaTxt.getValue("height").asFloat(0f);
+        } else {
+            luaTextID = null;
+            luaTextHeight = 0;
+        }
 
         // Image stuff
         this.image = data.getValue("image").asIdentifier(null);
@@ -161,6 +178,9 @@ public class GuiBuilder {
         } else if (text != null) {
             width = (int) (textHeight/4 * text.length()); // Guesstimate
             height = (int) textHeight;
+        } else if (luaTextID != null) {
+            width = (int) (luaTextHeight/4 * luaTextID.length()); // TODO Get real text
+            height = (int) luaTextHeight;
         } else {
             width = 0;
             height = 0;
@@ -168,7 +188,18 @@ public class GuiBuilder {
 
         // Controls
         String readout = data.getValue("readout").asString();
-        this.readout = readout != null ? Readouts.valueOf(readout.toUpperCase(Locale.ROOT)) : null;
+        if (readout != null) {
+            Readouts readouts1 = null;
+            try {
+                readouts1 = Readouts.valueOf(readout.toUpperCase(Locale.ROOT));
+            } catch (Exception e) {
+                ImmersiveRailroading.warn("The readout %s is not a valid readout, skipped.", readout.toUpperCase(Locale.ROOT));
+            } finally {
+                this.readout = readouts1;
+            }
+        } else {
+            this.readout = null;
+        }
         this.control = data.getValue("control").asString();
         this.setting = data.getValue("setting").asString();
         this.setting_default = data.getValue("setting_default").asFloat();
@@ -268,6 +299,7 @@ public class GuiBuilder {
         }
     }
 
+    @SuppressWarnings("incomplete-switch")
     private float getValue(EntityRollingStock stock) {
         float value = 0;
         if (readout != null) {
@@ -364,8 +396,26 @@ public class GuiBuilder {
         if (text != null) {
             String out = text;
             for (Stat stat : Stat.values()) {
-                if (out.contains(stat.toString())) {
-                    out = out.replace(stat.toString(), stat.getValue(stock));
+                String statStr = stat.toString();
+                int index = out.indexOf(statStr);
+                if (index == -1 /* !contain() */ ) continue;
+
+                if (stat.hasDecimalSetting()) {
+                    int decimalIndex = index + statStr.length();
+
+                    if (decimalIndex + 1 < out.length() // Check if we have both dot and number
+                        && out.charAt(decimalIndex) == '.'
+                        && Character.isDigit(out.charAt(decimalIndex + 1))) {
+                        // [stat].[digit(0~5)]
+                        int dig = Character.getNumericValue(out.charAt(decimalIndex + 1));
+                        dig = MathUtil.clamp(dig, 0, 5);
+
+                        out = out.replace(out.substring(index, decimalIndex + 2), stat.getValue(stock, dig));
+                    } else {
+                        out = out.replace(statStr, stat.getValue(stock));
+                    }
+                } else {
+                    out = out.replace(statStr, stat.getValue(stock));
                 }
             }
             for (GuiText label : new GuiText[]{GuiText.LABEL_THROTTLE, GuiText.LABEL_REVERSER, GuiText.LABEL_BRAKE}) {
@@ -376,6 +426,18 @@ public class GuiBuilder {
             Matrix4 mat = state.model_view().copy();
             mat.scale(scale, scale, scale);
             GUIHelpers.drawCenteredString(out, 0, 0, baseColor, mat);
+        }
+        if (luaTextID != null && stock instanceof EntityScriptableRollingStock) {        
+            Map<String, String> texts = ((EntityScriptableRollingStock) stock).getLuaGuiText();
+            String out = texts.get(luaTextID);
+            if (out != null) {
+             // Text is 8px tall
+                float scale = luaTextHeight / 8f;
+                Matrix4 mat = state.model_view().copy();
+                mat.scale(scale, scale, scale);
+                //GUIHelpers.drawString(out, 0, 0, baseColor, mat);
+                GUIHelpers.drawCenteredString(out, 0, 0, baseColor, mat);
+            }
         }
         for (GuiBuilder element : elements) {
             element.render(stock, state, maxx, maxy, baseColor);
@@ -397,7 +459,7 @@ public class GuiBuilder {
             }
         }
 
-        if (interactable() && (image != null || text != null)) {
+        if (interactable() && (image != null || text != null) || luaTextID != null) {
             if (control == null && setting == null && texture_variant == null) {
                 if (readout == null) {
                     return null;

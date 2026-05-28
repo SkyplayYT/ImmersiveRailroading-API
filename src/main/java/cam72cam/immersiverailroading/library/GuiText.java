@@ -6,6 +6,8 @@ public enum GuiText {
 	LABEL_BRAKE("label.brake"),
 	LABEL_THROTTLE("label.throttle"),
 	LABEL_REVERSER("label.reverser"),
+	SLIDER_ZOOM("slider.zoom"), //Need colon
+	SELECTOR_PAGE("selector.page"),
 	SELECTOR_TYPE("selector.type"),
 	SELECTOR_QUARTERS("selector.quarters"),
 	SELECTOR_CURVOSITY("selector.curvosity"),
@@ -20,6 +22,11 @@ public enum GuiText {
 	SELECTOR_TRACK("selector.track"),
 	SELECTOR_TRANSFER_TABLE_ENTRY_COUNT("selector.transfer_table_entry_count"),
 	SELECTOR_TRANSFER_TABLE_ENTRY_SPACING("selector.transfer_table_entry_spacing"),
+	SELECTOR_AUGMENT_DETECT("selector.augment.detect"),
+	SELECTOR_AUGMENT_REDSTONE("selector.augment.redstone"),
+	SELECTOR_AUGMENT_PUSHPULL("selector.augment.pushpull"),
+	SELECTOR_AUGMENT_COUPLER("selector.augment.coupler"),
+	SELECTOR_AUGMENT_CONTROL("selector.augment.control"),
 	SELECTOR_PLATE_TYPE("selector.plate_type"),
 	SELECTOR_PLATE_BOILER("selector.plate_boiler"),
 	SELECTOR_CAST_SINGLE("selector.cast_single"),
@@ -32,6 +39,9 @@ public enum GuiText {
 	SLIDER_LINE_SPACING("slider.line_spacing"),
 
 	CHECKBOX_GLOBAL("checkbox.global"),
+	SELECTOR_PAINTBRUSH_RANDOM("selector.paintbrush_random"),
+	SELECTOR_PAINTBRUSH_TO_STOCK("selector.paintbrush_apply_to_stock"),
+	SELECTOR_PAINTBRUSH_TO_TRAIN("selector.paintbrush_apply_to_train"),
 
 	TRACK_TYPE("track.type"),
 	TRACK_LENGTH("track.length"),
@@ -49,7 +59,8 @@ public enum GuiText {
 	UNIT_COUNT("unit.count"),
 
 	LOCO_WORKS("loco.works"),
-	LOCO_HORSE_POWER("loco.horse_power"),
+//	LOCO_HORSE_POWER("loco.horse_power"),
+	LOCO_POWER("loco.power"),
 	LOCO_TRACTION("loco.tractive_effort"),
 	LOCO_MAX_SPEED("loco.max_speed"),
 	GAUGE_TOOLTIP("stock.gauge"),
@@ -60,15 +71,27 @@ public enum GuiText {
 	TEXTURE_TOOLTIP("stock.texture"),
 	SWITCH_KEY_TOOLTIP("item.switch_key"),
 	SWITCH_KEY_DATA_TOOLTIP("item.switch_key.data"),
+	RADIO_CARD_LINKED_TO("item.radio_card.linked_to"),
+	RADIO_CARD_NOT_LINKED("item.radio_card.not_linked"),
 	MODELER_TOOLTIP("stock.modeler"),
 	PACK_TOOLTIP("stock.pack"),
+	TAG_TOOLTIP("stock.tag"),
 	TRACK_SWITCHER_TOOLTIP("item.track_exchanger"),
 	PAINT_BRUSH_MODE_TOOLTIP("item.paint_brush.mode"),
 	PAINT_BRUSH_DESCRIPTION_TOOLTIP("item.paint_brush.description"),
+
+	LABEL_CURRENT_AUGMENT("label.current_augment"),
+	LABEL_ACTUATOR_FILTER("label.actuator_filter"),
+	LABEL_INCLUDED_TAG("label.included_tag"),
+	LABEL_EXCLUDED_TAG("label.excluded_tag"),
+
+	ON("overlay.on"),
+	OFF("overlay.off"),
 	NONE("none"),
 	;
 
-	private String value;
+	private final String value;
+  
 	GuiText(String value) {
 		this.value = value;
 	}

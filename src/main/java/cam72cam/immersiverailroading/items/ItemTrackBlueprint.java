@@ -52,7 +52,8 @@ public class ItemTrackBlueprint extends CustomItem {
         }
 	}
 	
-	@Override
+	@SuppressWarnings("deprecation")
+    @Override
     public ClickResult onClickBlock(Player player, World world, Vec3i pos, Player.Hand hand, Facing facing, Vec3d hit) {
 		ItemStack stack = player.getHeldItem(hand);
 		RailSettings stackInfo = RailSettings.from(stack);
@@ -104,9 +105,9 @@ public class ItemTrackBlueprint extends CustomItem {
 		String indented = "    - %s";
 
 		tooltip.add(GuiText.TRACK_TYPE.toString(""));
-		tooltip.add(String.format(indented, settings.type));
-		tooltip.add(String.format(indented, settings.length + " Meters"));
-		tooltip.add(String.format(indented, settings.gauge + " Gauge"));
+		tooltip.add(String.format(indented, GuiText.TRACK_TYPE.toString(settings.type)));
+		tooltip.add(String.format(indented, GuiText.TRACK_LENGTH.toString(settings.length)));
+		tooltip.add(String.format(indented, GuiText.TRACK_GAUGE.toString(settings.gauge)));
 		// TODO move checks for if applicable to enum
 		if (settings.type.hasQuarters()) {
 			tooltip.add(String.format(indented, GuiText.TRACK_QUARTERS.toString(settings.degrees)));

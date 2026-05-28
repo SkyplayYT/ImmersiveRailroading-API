@@ -44,6 +44,10 @@ public class RailInfo {
 	public RailInfo(RailSettings settings, PlacementInfo placementInfo, PlacementInfo customInfo, SwitchState switchState, SwitchState switchForced, double tablePos, boolean itemHeld) {
 		if (customInfo == null) {
 			customInfo = placementInfo;
+			//#1566: Use customInfo to adjust slope height
+			if (settings.type == TrackItems.SLOPE) {
+				customInfo = customInfo.offset(new Vec3i(0,1,0));
+			}
 		}
 
 		this.settings = settings;
@@ -403,7 +407,8 @@ public class RailInfo {
 			newPositionFormat.setDouble("z", nbt.getDouble("placementPositionZ"));
 			nbt.set("placementPosition", newPositionFormat);
 
-			PlacementInfo placementInfo = new PlacementInfo(nbt);
+			@SuppressWarnings("deprecation")
+            PlacementInfo placementInfo = new PlacementInfo(nbt);
 			placementInfo = new PlacementInfo(placementInfo.placementPosition, placementInfo.direction, placementInfo.yaw, null);
 
 			SwitchState switchState = SwitchState.values()[nbt.getInteger("switchState")];

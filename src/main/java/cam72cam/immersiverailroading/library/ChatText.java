@@ -18,6 +18,7 @@ public enum ChatText {
 	COUPLER_STATUS_COUPLED("coupler.status.coupled"),
 	COUPLER_STATUS_DECOUPLED_ENGAGED("coupler.status.decoupled.engaged"),
 	COUPLER_STATUS_DECOUPLED_DISENGAGED("coupler.status.decoupled.disengaged"),
+	AUGMENT_FILTER_FAIL("augment.filter_fail"),
 	BUILD_MISSING("build.missing"),
 	SET_AUGMENT_FILTER("augment.set"),
 	RESET_AUGMENT_FILTER("augment.reset"),
@@ -29,7 +30,7 @@ public enum ChatText {
 	RADIO_NOLINK("radio.nolink"),
 	RADIO_CANT_LINK("radio.cant_link"),
 	BRUSH_NO_VARIANTS("brush.no.variants"),
-	BRUSH_NEXT("brush.next"),
+	BRUSH_NEXT_DEBUG("brush.next_debug"),
 	BRUSH_MODE_SET("brush.mode.set"),
 	SWITCH_UNLOCKED("switch_state.unlocked"),
 	SWITCH_LOCKED("switch_state.locked"),
@@ -41,7 +42,9 @@ public enum ChatText {
 	WIRELESS_REMOTECONTROL_UNLINK("wireless.remotecontrol.unlink"),
 	WIRELESS_REMOTECONTROL_RELINK("wireless.remotecontrol.relink"),
 	WIRELESS_REMOTECONTROL_CANTLINK("wireless.remotecontrol.cantlink"),
-	TYPEWRITER_NO_STOCK("typewriter.no_stock")
+	TYPEWRITER_NO_STOCK("typewriter.no_stock"),
+	MULTIBLOCK_SELECTING("multiblock.select"),
+	LOCKED_BRAKE("brake.locked"),
 	;
 	
 	private String value;

@@ -69,7 +69,7 @@ public class ItemMultipleUnit extends BaseItemRollingStock {
             weight += definition.getWeight(gauge);
             if (definition instanceof LocomotiveDefinition) {
                 LocomotiveDefinition locomotiveDefinition = (LocomotiveDefinition) definition;
-                works.add(locomotiveDefinition.works);
+                works.add(locomotiveDefinition.getWorks());
                 if (!locomotiveDefinition.isCabCar()) {
                     horsePower += locomotiveDefinition.getHorsePower(gauge);
                     traction += locomotiveDefinition.getStartingTractionNewtons(gauge);
@@ -91,8 +91,9 @@ public class ItemMultipleUnit extends BaseItemRollingStock {
             tooltip.add(GuiText.LOCO_WORKS.toString(String.join(", ", works)));
         }
 
+        // TODO re-add
         if (horsePower != 0) {
-            tooltip.add(GuiText.LOCO_HORSE_POWER.toString(horsePower));
+            // tooltip.add(GuiText.LOCO_HORSE_POWER.toString(horsePower));
         }
 
         if (traction != 0) {

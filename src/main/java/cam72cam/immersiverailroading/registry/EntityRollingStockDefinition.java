@@ -5,7 +5,6 @@ import cam72cam.immersiverailroading.ConfigSound;
 import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.immersiverailroading.entity.*;
 import cam72cam.immersiverailroading.entity.EntityCoupleableRollingStock.CouplerType;
-import cam72cam.immersiverailroading.floor.Mesh;
 import cam72cam.immersiverailroading.floor.NavMesh;
 import cam72cam.immersiverailroading.font.FontLoader;
 import cam72cam.immersiverailroading.textfield.TextFieldConfig;
@@ -19,8 +18,7 @@ import cam72cam.immersiverailroading.model.components.ModelComponent;
 import cam72cam.mod.ModCore;
 import cam72cam.mod.entity.EntityRegistry;
 import cam72cam.mod.math.Vec3d;
-import cam72cam.mod.model.obj.OBJGroup;
-import cam72cam.mod.model.obj.VertexBuffer;
+import cam72cam.mod.model.obj.FaceAccessor;
 import cam72cam.mod.resource.Identifier;
 import cam72cam.mod.serialization.*;
 import cam72cam.mod.serialization.ResourceCache.GenericByteBuffer;
@@ -63,9 +61,10 @@ public abstract class EntityRollingStockDefinition {
     public Identifier collision_sound;
     public double flange_min_yaw;
     double internal_inv_scale;
-    private String name;
-    private String modelerName;
-    private String packName;
+    public String name;
+    public String modelerName;
+    public String packName;
+    protected Set<String> tags;
     private ValveGearConfig valveGear;
     public float darken;
     public Identifier modelLoc;
@@ -87,9 +86,13 @@ public abstract class EntityRollingStockDefinition {
     private double passengerCompartmentWidth;
     private double weight;
     private int maxPassengers;
+    private int snowLayers;
     private float interiorLightLevel;
+    private boolean hasIndependentBrake;
     private boolean hasHandBrake;
     private boolean hasPressureBrake;
+    private boolean hasEpBrake;
+    private boolean hasSingleReleaseBrake;
     private final EnumMap<ModelComponentType, List<ModelComponent>> renderComponents;
     private final List<ItemComponentType> itemComponents;
     private final Function<EntityBuildableRollingStock, float[][]> heightmap;
@@ -103,15 +106,23 @@ public abstract class EntityRollingStockDefinition {
     private double swayMultiplier;
     private double tiltMultiplier;
     private float brakeCoefficient;
+    private PhysicalMaterials brakeMaterials;
     private float handBrakeCoefficient;
     public double rollingResistanceCoefficient;
     public double directFrictionCoefficient;
+    private int magneticTrackBrake;
+    private int speedBrakeSqueal;
+    private float rigidWheelbase;
+    
+    public SoundDefinition brakeHighSpeedSound;
+    public SoundDefinition brakeLowSpeedSound;
+    public SoundDefinition brakeShoeSound;
+    public SoundDefinition brakePressureSound;
 
     public List<AnimationDefinition> animations;
     public Map<String, Float> cgDefaults;
     public Map<String, DataBlock> widgetConfig;
 
-    public Mesh mesh;
     public NavMesh navMesh;
 
     public List<Identifier> loadedFonts = new ArrayList<>();
@@ -119,8 +130,6 @@ public abstract class EntityRollingStockDefinition {
 
     // used for unique text fields to check if text field input is already assigned
     public Map<UUID, Map<String, String>> inputs = new HashMap<>();
-
-    private List<DataBlock> textFieldData;
 
     public static class SoundDefinition {
         public final Identifier start;
@@ -160,27 +169,6 @@ public abstract class EntityRollingStockDefinition {
             }
             return null;
         }
-
-        @Override
-        public boolean equals(Object obj) {
-            if (this == obj) return true;
-            if (obj == null || getClass() != obj.getClass()) return false;
-            SoundDefinition that = (SoundDefinition) obj;
-
-            return Objects.equals(start, that.start) &&
-                    Objects.equals(main, that.main) &&
-                    looping == that.looping &&
-                    Objects.equals(stop, that.stop) &&
-                    Objects.equals(distance, that.distance) &&
-                    Objects.equals(volume, that.volume);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(start, main, looping, stop, distance, volume);
-        }
-
-
     }
 
     public static class AnimationDefinition {
@@ -198,6 +186,8 @@ public abstract class EntityRollingStockDefinition {
         public final Identifier animatrix;
         public final float offset;
         public final boolean invert;
+        public final float rangeMin;
+        public final float rangeMax;
         public final float frames_per_tick;
         public final SoundDefinition sound;
 
@@ -212,6 +202,8 @@ public abstract class EntityRollingStockDefinition {
             mode = AnimationMode.valueOf(obj.getValue("mode").asString().toUpperCase(Locale.ROOT));
             offset = obj.getValue("offset").asFloat(0f);
             invert = obj.getValue("invert").asBoolean(false);
+            rangeMin = obj.getValue("range_min").asFloat(0f);
+            rangeMax = obj.getValue("range_max").asFloat(1f);
             frames_per_tick = obj.getValue("frames_per_tick").asFloat(1f);
             sound = SoundDefinition.getOrDefault(obj, "sound");
         }
@@ -227,6 +219,7 @@ public abstract class EntityRollingStockDefinition {
         public final float blinkIntervalSeconds;
         public final float blinkOffsetSeconds;
         public final boolean blinkFullBright;
+        public final boolean revertDirection;
         public final String reverseColor;
         public final Identifier lightTex;
         public final boolean castsLight;
@@ -235,6 +228,7 @@ public abstract class EntityRollingStockDefinition {
             blinkIntervalSeconds = data.getValue("blinkIntervalSeconds").asFloat(0f);
             blinkOffsetSeconds = data.getValue("blinkOffsetSeconds").asFloat(0f);
             blinkFullBright = data.getValue("blinkFullBright").asBoolean(true);
+            revertDirection = data.getValue("revertDirection").asBoolean(false);
             reverseColor = data.getValue("reverseColor").asString();
             lightTex = data.getValue("texture").asIdentifier(default_light_tex);
             castsLight = data.getValue("castsLight").asBoolean(true);
@@ -346,8 +340,7 @@ public abstract class EntityRollingStockDefinition {
         this.model = createModel();
         this.itemGroups = model.groups.keySet().stream().filter(x -> !ModelComponentType.shouldRender(x)).collect(Collectors.toList());
 
-        this.mesh = Mesh.loadMesh(this.model);
-        this.navMesh = new NavMesh(this.mesh);
+        this.navMesh = new NavMesh(this.model);
 
         this.renderComponents = new EnumMap<>(ModelComponentType.class);
         for (ModelComponent component : model.allComponents) {
@@ -435,6 +428,12 @@ public abstract class EntityRollingStockDefinition {
         name = data.getValue("name").asString();
         modelerName = data.getValue("modeler").asString();
         packName = data.getValue("pack").asString();
+        tags = new HashSet<>();
+        List<DataBlock.Value> tagValues = data.getValues("tags");
+        if (tagValues != null) {
+            tagValues.forEach(v -> tags.add(v.asString()));
+        }
+
         darken = data.getValue("darken_model").asFloat();
         internal_model_scale = 1;
         internal_inv_scale = 1;
@@ -497,9 +496,9 @@ public abstract class EntityRollingStockDefinition {
         bogeyFront = pivot.getValue("front").asFloat() * (float) internal_model_scale;
         bogeyRear = pivot.getValue("rear").asFloat() * (float) internal_model_scale;
 
-        dampeningAmount = data.getValue("sound_dampening_percentage").asFloat();
+        dampeningAmount = 1 - data.getValue("sound_dampening_percentage").asFloat();
         if (dampeningAmount < 0 || dampeningAmount > 1) {
-            dampeningAmount = 0.75f;
+            dampeningAmount = 0.5f;
         }
         scalePitch = data.getValue("scale_pitch").asBoolean();
 
@@ -512,13 +511,18 @@ public abstract class EntityRollingStockDefinition {
         DataBlock properties = data.getBlock("properties");
         weight = properties.getValue("weight_kg").asInteger() * internal_inv_scale;
         valveGear = ValveGearConfig.get(properties, "valve_gear");
+        hasIndependentBrake = properties.getValue("independent_brake").asBoolean();
         hasHandBrake = properties.getValue("hand_brake").asBoolean(true);
         hasPressureBrake = properties.getValue("pressure_brake").asBoolean();
+        hasEpBrake = properties.getValue("ep_brake").asBoolean(false);
+        hasSingleReleaseBrake = properties.getValue("single_release_brake").asBoolean(false);
+        magneticTrackBrake = properties.getValue("magnetic_brake_newton").asInteger(0);
         // Locomotives default to linear brake control
         isLinearBrakeControl = properties.getValue("linear_brake_control").asBoolean();
+        speedBrakeSqueal = properties.getValue("speed_brake_squeal").asInteger(45);
+        rigidWheelbase = properties.getValue("rigid_wheelbase").asFloat(2.5f);
 
         script = data.getValue("script").asIdentifier();
-
 
         List<DataBlock.Value> fonts = data.getValues("fonts");
         if (fonts != null) {
@@ -529,14 +533,13 @@ public abstract class EntityRollingStockDefinition {
                 loadedFonts.add(i, font);
             }
         }
-        textFieldData = data.getBlocks("textfield");
 
-        brakeCoefficient = PhysicalMaterials.STEEL.kineticFriction(PhysicalMaterials.CAST_IRON);
         try {
-            brakeCoefficient = PhysicalMaterials.STEEL.kineticFriction(PhysicalMaterials.valueOf(properties.getValue("brake_shoe_material").asString()));
+            brakeMaterials = PhysicalMaterials.valueOf(properties.getValue("brake_shoe_material").asString(PhysicalMaterials.CAST_IRON.toString()));
         } catch (Exception ex) {
             ImmersiveRailroading.warn("Invalid brake_shoe_material, possible values are: %s", Arrays.toString(PhysicalMaterials.values()));
         }
+        brakeCoefficient = PhysicalMaterials.STEEL.kineticFriction(brakeMaterials);
         brakeCoefficient = properties.getValue("brake_friction_coefficient").asFloat(brakeCoefficient);
         // https://en.wikipedia.org/wiki/Rolling_resistance#Rolling_resistance_coefficient_examples
         rollingResistanceCoefficient = properties.getValue("rolling_resistance_coefficient").asDouble();
@@ -557,6 +560,7 @@ public abstract class EntityRollingStockDefinition {
         if (scripts != null) {
             scripts.forEach(value -> addScripts.add(value.asString()));
         }
+        snowLayers = properties.getValue("snow_layers").asInteger();
 
         DataBlock sounds = data.getBlock("sounds");
         wheel_sound = sounds.getValue("wheels").asIdentifier();
@@ -568,6 +572,11 @@ public abstract class EntityRollingStockDefinition {
         flange_sound = sounds.getValue("flange").asIdentifier();
         flange_min_yaw = sounds.getValue("flange_min_yaw").asDouble();
         collision_sound = sounds.getValue("collision").asIdentifier();
+        brakeHighSpeedSound = SoundDefinition.getOrDefault(sounds, "brake_noise_fast");
+        brakeLowSpeedSound = SoundDefinition.getOrDefault(sounds, "brake_noise_slow");
+        brakeShoeSound = SoundDefinition.getOrDefault(sounds, "brake_apply");
+        brakePressureSound = SoundDefinition.getOrDefault(sounds, "brake_pressure");
+        
         DataBlock soundControls = sounds.getBlock("controls");
         if (soundControls != null) {
             soundControls.getBlockMap().forEach((key, block) -> controlSounds.put(key, new ControlSoundsDefinition(block)));
@@ -693,6 +702,9 @@ public abstract class EntityRollingStockDefinition {
         }
     }
 
+    public boolean hasIndependentBrake() {
+        return hasIndependentBrake;
+    }
 
     public boolean hasHandBrake() {
         return hasHandBrake;
@@ -700,6 +712,14 @@ public abstract class EntityRollingStockDefinition {
 
     public boolean hasPressureBrake() {
         return hasPressureBrake;
+    }
+    
+    public boolean hasEpBrake() {
+        return hasEpBrake;
+    }
+    
+    public boolean hasSingleRealseBrake() {
+        return hasSingleReleaseBrake;
     }
 
     private static class HeightMapData {
@@ -722,33 +742,31 @@ public abstract class EntityRollingStockDefinition {
                     .collect(Collectors.toList());
             data = new float[components.size() * xRes * zRes];
 
-            VertexBuffer vb = def.model.vbo.buffer.get();
+            FaceAccessor visitor = def.model.getFaceAccessor();
 
             for (int i = 0; i < components.size(); i++) {
                 ModelComponent rc = components.get(i);
                 int idx = i * xRes * zRes;
                 for (String group : rc.modelIDs) {
-                    OBJGroup faces = def.model.groups.get(group);
+                    FaceAccessor grouped = visitor.getSubByGroup(group);
 
-                    for (int face = faces.faceStart; face <= faces.faceStop; face++) {
+                    for (FaceAccessor face : grouped) {
                         Path2D path = new Path2D.Float();
-                        float fheight = 0;
-                        boolean first = true;
-                        for (int point = 0; point < vb.vertsPerFace; point++) {
-                            int vertex = face * vb.vertsPerFace * vb.stride + point * vb.stride;
-                            float vertX = vb.data[vertex + 0];
-                            float vertY = vb.data[vertex + 1];
-                            float vertZ = vb.data[vertex + 2];
-                            vertX += def.frontBounds;
-                            vertZ += def.widthBounds / 2;
-                            if (first) {
-                                path.moveTo(vertX * ratio, vertZ * ratio);
-                                first = false;
-                            } else {
-                                path.lineTo(vertX * ratio, vertZ * ratio);
-                            }
-                            fheight += vertY / vb.vertsPerFace;
-                        }
+                        float faceHeight = 0;
+
+                        double v0x = (face.v0.x() + def.frontBounds) * ratio;
+                        double v0z = (face.v0.z() + def.widthBounds / 2) * ratio;
+                        double v1x = (face.v1.x() + def.frontBounds) * ratio;
+                        double v1z = (face.v1.z() + def.widthBounds / 2) * ratio;
+                        double v2x = (face.v2.x() + def.frontBounds) * ratio;
+                        double v2z = (face.v2.z() + def.widthBounds / 2) * ratio;
+
+                        path.moveTo(v0x, v0z);
+                        path.lineTo(v1x, v1z);
+                        path.lineTo(v2x, v2z);
+
+                        faceHeight = faceHeight + (face.v0.y() + face.v1.y() + face.v2.y()) / 3;
+
                         Rectangle2D bounds = path.getBounds2D();
                         if (bounds.getWidth() * bounds.getHeight() < 1) {
                             continue;
@@ -758,7 +776,7 @@ public abstract class EntityRollingStockDefinition {
                                 float relX = ((xRes - 1) - x);
                                 float relZ = z;
                                 if (bounds.contains(relX, relZ) && path.contains(relX, relZ)) {
-                                    float relHeight = fheight / (float) def.heightBounds;
+                                    float relHeight = faceHeight / (float) def.heightBounds;
                                     relHeight = ((int) Math.ceil(relHeight * precision)) / (float) precision;
                                     data[idx + x * zRes + z] = Math.max(data[idx + x * zRes + z], relHeight);
                                 }
@@ -868,6 +886,10 @@ public abstract class EntityRollingStockDefinition {
         tips.add(GuiText.WEIGHT_TOOLTIP.toString(this.getWeight(gauge)));
         tips.add(GuiText.MODELER_TOOLTIP.toString(modelerName));
         tips.add(GuiText.PACK_TOOLTIP.toString(packName));
+        if (!tags.isEmpty()) {
+            String tag = String.join(",", tags);
+            tips.add(GuiText.TAG_TOOLTIP.toString(tag));
+        }
         return tips;
     }
 
@@ -921,7 +943,7 @@ public abstract class EntityRollingStockDefinition {
                         Optional.ofNullable(config.getValue("color").asString()).ifPresent(c -> defaults.setColor(RGBA.fromHex(c)));
                         Optional.ofNullable(config.getValue("fullbright").asBoolean()).ifPresent(defaults::setFullbright);
                         Optional.ofNullable(config.getValue("gap").asInteger()).ifPresent(defaults::setGap);
-                        Optional.ofNullable(config.getValue("align").asString()).ifPresent(a -> defaults.setAlign(TextFieldConfig.Align.valueOf(a)));
+                        Optional.ofNullable(config.getValue("align").asString()).ifPresent(a -> defaults.setAlign(TextFieldConfig.Align.valueOf(a.toUpperCase())));
                         Optional.ofNullable(config.getValue("font").asIdentifier()).ifPresent(defaults::setFont);
                         Optional.ofNullable(config.getValues("linked")).ifPresent(l -> defaults.setLinked(l.stream().map(v -> String.format("TEXTFIELD_%s", v.asString())).collect(Collectors.toList())));
                         Optional.ofNullable(config.getValue("global").asBoolean()).ifPresent(defaults::setGlobal);
@@ -1014,7 +1036,7 @@ public abstract class EntityRollingStockDefinition {
     }
 
     protected GuiBuilder getDefaultOverlay(DataBlock data) throws IOException {
-        return hasHandBrake() ? GuiBuilder.parse(new Identifier(ImmersiveRailroading.MODID, "gui/default/independent.caml")) : null;
+        return hasIndependentBrake() || hasHandBrake() ? GuiBuilder.parse(new Identifier(ImmersiveRailroading.MODID, "gui/default/independent.caml")) : null;
     }
     
     public GuiBuilder getOverlay() {
@@ -1033,7 +1055,7 @@ public abstract class EntityRollingStockDefinition {
         return tiltMultiplier;
     }
 
-    public double getBrakeShoeFriction() {
+    public float getBrakeShoeFriction() {
         return brakeCoefficient;
     }
 
@@ -1060,9 +1082,8 @@ public abstract class EntityRollingStockDefinition {
 
     public void setSounds(List<Map<String, DataBlock.Value>> newSound, EntityMoveableRollingStock stock) {
     }
-
-    public Mesh getMesh() {
-        return this.mesh;
+    public int getSnowLayers() {
+        return snowLayers;
     }
     
     public float getHandBrakeCoefficient() {
@@ -1071,5 +1092,21 @@ public abstract class EntityRollingStockDefinition {
 
     public String getName() {
         return name;
+    }
+    
+    public PhysicalMaterials getBrakeMaterials() {
+        return brakeMaterials;
+    }
+    
+    public int getMagnetBrakeNewton() {
+        return magneticTrackBrake;
+    }
+    
+    public int getSpeedBrakeSqueal() {
+        return speedBrakeSqueal;
+    }
+    
+    public float getRigidWheelbase() {
+        return rigidWheelbase;
     }
 }

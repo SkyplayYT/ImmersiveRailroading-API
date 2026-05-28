@@ -1,10 +1,10 @@
 package cam72cam.immersiverailroading.entity.physics;
 
 import cam72cam.immersiverailroading.Config;
+import cam72cam.immersiverailroading.Config.ConfigDebug;
 import cam72cam.immersiverailroading.entity.EntityCoupleableRollingStock;
 import cam72cam.immersiverailroading.entity.Locomotive;
 import cam72cam.immersiverailroading.entity.LocomotiveDiesel;
-import cam72cam.immersiverailroading.entity.Tender;
 import cam72cam.immersiverailroading.entity.physics.chrono.ServerChronoState;
 import cam72cam.immersiverailroading.library.BrakeMode;
 import cam72cam.immersiverailroading.library.Gauge;
@@ -22,7 +22,6 @@ import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.util.DegreeFuncs;
 import cam72cam.mod.util.FastMath;
 import cam72cam.mod.world.World;
-
 import java.util.*;
 import java.util.function.Function;
 
@@ -59,6 +58,9 @@ public class SimulationState {
     public List<Vec3i> blocksToBreak;
 
     public double directResistance;
+    private static float trainBrake = 0;
+    private static boolean singleReleaseBrake = false;
+    
 
     public Configuration config;
     public boolean dirty = true;
@@ -109,6 +111,7 @@ public class SimulationState {
         public float independentBrake;
         public double handBrakeNewtons;
         public double dynamicBrakeNewtons;
+        public double magnetBrakeNewtons;
         public boolean isSanding;
 
         public boolean hasPressureBrake;
@@ -116,6 +119,14 @@ public class SimulationState {
         public float trainBrakePosition;
         public float trainBrakePressure;
         public float brakeCylinderPressure;
+        private boolean brakeLocked;
+        private boolean hasSingleReleaseBrake;
+        private float brakeSystemEfficiency;
+        public boolean hasEpBrake;
+        public boolean isLocomotive;
+        public float delta;
+        public float mainAirReservoir;
+        public float mainReservoirSizeFactor;
 
         public Configuration(EntityCoupleableRollingStock stock) {
             debugID = stock.getDefinitionID();
@@ -128,7 +139,7 @@ public class SimulationState {
             height = stock.getDefinition().getHeight(gauge);
             double pitchOffset = (Math.abs(Math.sin(Math.toRadians(stock.getRotationPitch())) * length));
             bounds = s -> stock.getDefinition().getBounds(s.yaw, gauge)
-                    .offset(s.position.add(0, -(s.position.y % 1) - pitchOffset, 0))
+                    .offset(s.position.add(0, -(s.position.y - Math.floor(s.position.y)) - pitchOffset, 0))
                     .contract(new Vec3d(0, 0, 0.5 * gauge.scale()));
                     //.contract(new Vec3d(0, 0.5 * this.gauge.scale(), 0))
                     //.offset(new Vec3d(0, 0.5 * this.gauge.scale(), 0));
@@ -144,44 +155,50 @@ public class SimulationState {
             couplerSlackRear = stock.getDefinition().getCouplerSlack(EntityCoupleableRollingStock.CouplerType.BACK, gauge);
 
             this.massKg = stock.getWeight();
-            // When FuelRequired is false, most of the time the locos are empty.  Work around that here
-            double designMassKg = !Config.ConfigBalance.FuelRequired && (stock instanceof Locomotive || stock instanceof Tender) ? massKg : stock.getMaxWeight();
 
             if (stock instanceof Locomotive) {
+                trainBrakePosition = ((Locomotive) stock).getTrainBrakePos();
                 Locomotive locomotive = (Locomotive) stock;
                 tractiveEffortNewtons = locomotive::getTractiveEffortNewtons;
                 tractiveEffortFactors = locomotive.getThrottle() + (locomotive.getReverser() * 10);
-                desiredBrakePressure = Config.ImmersionConfig.brakeMode.equals(BrakeMode.DEFAULT) ?
-                        1 - locomotive.getTrainBrake() : locomotive.getTrainBrake() < 0.98 ? 1 - 0.31 * (double)locomotive.getTrainBrake() : 0;
-                isSanding = locomotive.isSanding();
-                isSanding = locomotive.isSanding();
+                desiredBrakePressure = Math.min(locomotive.getMainAirReservoir() * 2 ,Config.ImmersionConfig.brakeMode.equals(BrakeMode.DEFAULT) ?
+                        1 - trainBrakePosition : trainBrakePosition == 1 ? 0 : 1 - 0.31 * (double)trainBrakePosition);
+                isSanding = locomotive.isSanding;
+                this.mainAirReservoir = locomotive.getMainAirReservoir();
+                this.isLocomotive = true;
+                this.mainReservoirSizeFactor = locomotive.getDefinition().getMainReservoirSizeFactor();
             } else {
                 tractiveEffortNewtons = speed -> 0d;
                 tractiveEffortFactors = 0;
                 desiredBrakePressure = null;
                 isSanding = false;
+                this.isLocomotive = false;
+                this.mainReservoirSizeFactor = 1f;
             }
 
 
-            double staticFriction = PhysicalMaterials.STEEL.staticFriction(PhysicalMaterials.STEEL);
+            float staticFriction = PhysicalMaterials.STEEL.staticFriction(PhysicalMaterials.STEEL);
             this.maximumAdhesionNewtons = massKg * staticFriction * 9.8 * stock.getBrakeAdhesionEfficiency();
-            this.designAdhesionNewtons = designMassKg * staticFriction * 9.8 * stock.getBrakeSystemEfficiency();
-            if (stock instanceof Locomotive)
-                this.independentBrake = ((Locomotive) stock).getIndependentBrake();
-            this.handBrakeNewtons = stock.getHandBrake() * 9.8 * 0.015 * stock.getDefinition().getWeight(gauge) * stock.getDefinition().getHandBrakeCoefficient();
+            this.designAdhesionNewtons = stock.getBrakingWeight() * staticFriction * 9.8 * stock.getBrakeSystemEfficiency() * (stock instanceof Locomotive ? 0.75f : 1);
+            this.independentBrake = stock.getIndependentBrake();
+            this.handBrakeNewtons = stock.getHandBrake() * 9.8 * 0.05 * stock.getDefinition().getWeight(gauge) * stock.getDefinition().getHandBrakeCoefficient();
             if (stock instanceof LocomotiveDiesel) {
-                this.dynamicBrakeNewtons = ((LocomotiveDiesel) stock).getDynamicBrakeNewtons() * ((LocomotiveDiesel) stock).getDynamicBrakeMultiplier();
+                this.dynamicBrakeNewtons = ((LocomotiveDiesel) stock).getDynamicBrakeMultiplier() * ((LocomotiveDiesel) stock).getDynamicBrakeNewton();
             } else {
                 this.dynamicBrakeNewtons = 0;
             }
+            this.magnetBrakeNewtons = stock.getMagnetBrakeNewton();
             this.directResistanceNewtons = stock::getDirectFrictionNewtons;
             this.hasPressureBrake = stock.getDefinition().hasPressureBrake();
-            if (stock instanceof Locomotive)
-                this.trainBrakePosition = ((Locomotive) stock).getTrainBrake();
             this.trainBrakePressure = stock.getBrakePressure();
             this.brakeCylinderPressure = stock.getBrakeCylinderPressure();
 
             this.rollingResistanceCoefficient = stock.getDefinition().rollingResistanceCoefficient;
+            
+            this.brakeLocked = stock.locked;
+            this.hasSingleReleaseBrake = stock.getDefinition().hasSingleRealseBrake();
+            this.brakeSystemEfficiency = stock.getBrakeSystemEfficiency();
+            this.hasEpBrake = stock.getDefinition().hasEpBrake();
         }
 
         @Override
@@ -312,7 +329,9 @@ public class SimulationState {
             if (BlockUtil.isIRRail(config.world, bp)) {
                 trackToUpdate.add(bp);
             } else {
-                if (Config.ConfigDamage.TrainsBreakBlocks && !BlockUtil.isIRRail(config.world, bp.up())) {
+                if (Config.ConfigDamage.TrainsBreakBlocks
+                        && !BlockUtil.isWhitelisted(config.world, bp)
+                        && !BlockUtil.isIRRail(config.world, bp.up())) {
                     if (bp.y >= position.y - (position.y % 1)) { // Prevent it from breaking blocks under the pitched train (bb expanded)
                         interferingBlocks.add(bp);
                         interferingResistance += config.world.getBlockHardness(bp);
@@ -438,38 +457,83 @@ public class SimulationState {
     public boolean atRest() {
         return velocity == 0 && Math.abs(forcesNewtons()) < frictionNewtons();
     }
+    
+    private float calculateBrakePressure() {
+        float cylinderPressure = config.brakeCylinderPressure;
+        cylinderPressure = config.hasPressureBrake ? Math.min(Config.ImmersionConfig.brakeMode.equals(BrakeMode.DEFAULT) ?
+                1 - config.trainBrakePressure : (1 - config.trainBrakePressure) / 0.3f, 1) : 0;
+        if (!config.brakeLocked) {
+            cylinderPressure = 0;
+        }
+        if (config.brakeLocked && config.trainBrakePressure == 0) {
+            cylinderPressure = 1;
+        }
+        if (config.hasSingleReleaseBrake) {
+            float currTrainBrake = config.trainBrakePressure;
+            if (currTrainBrake > trainBrake && !singleReleaseBrake) {
+                singleReleaseBrake = true;
+            }
+            if (singleReleaseBrake && config.trainBrakePressure >= 1) {
+                singleReleaseBrake = false;
+            }  
+            trainBrake = currTrainBrake;
+            if (singleReleaseBrake) {
+                cylinderPressure = config.brakeCylinderPressure - 0.01f;
+            }
+        }
+        return config.brakeCylinderPressure = Math.max(cylinderPressure, config.independentBrake);
+    }
 
     public double frictionNewtons() {
+        double defaultNewtons = config.massKg * 9.8;
         // https://evilgeniustech.com/idiotsGuideToRailroadPhysics/OtherLocomotiveForces/#rolling-resistance
-        double rollingResistanceNewtons = config.rollingResistanceCoefficient * (config.massKg * 9.8);
+        double rollingResistanceNewtons = config.rollingResistanceCoefficient * defaultNewtons;
         // https://www.arema.org/files/pubs/pgre/PGChapter2.pdf
         // ~15 lb/ton -> 0.01 weight ratio -> 0.001 uS with gravity
-        double startingFriction = velocity == 0 ? 0.001 * config.massKg * 9.8 : 0;
+        double startingFriction = velocity == 0 ? 0.005 * defaultNewtons : 0;
         // TODO This is kinda directional?
         double blockResistanceNewtons = interferingResistance * 1000 * Config.ConfigDamage.blockHardness;
 
-        config.brakeCylinderPressure = Math.max(Math.min(Config.ImmersionConfig.brakeMode.equals(BrakeMode.DEFAULT) ?
-                1 - config.trainBrakePressure :
-                    (1 - config.trainBrakePressure) / 0.3f, 1), config.independentBrake);
-        double brakeAdhesionNewtons = config.designAdhesionNewtons * config.brakeCylinderPressure;
-        double handBrakeNewtons = config.handBrakeNewtons;
-        double dynamicBrakeNewtons = config.dynamicBrakeNewtons * Config.ConfigBalance.brakeMultiplier;
+        //Gauge gauge = config.gauge;
+        //double yawDelta = DegreeFuncs.delta(config.stock.getFrontYaw(), config.stock.getRearYaw()) /
+        //        Math.abs(config.stock.getDefinition().getBogeyFront(gauge) - config.stock.getDefinition().getBogeyRear(gauge));
+        //
+        double curveResistanceNewtons = 0; // 0.0034 * (0.72 * gauge.value() + 0.47 * config.stock.getDefinition().getRigidWheelbase()) * yawDelta * defaultNewtons;
+        
+        double brakeCylinderNewtons = Math.max(config.designAdhesionNewtons * calculateBrakePressure(), config.handBrakeNewtons);
+        double dynamicBrakeNewtons = config.dynamicBrakeNewtons;
+        double magnetBrakeNewtons = config.magnetBrakeNewtons;
         
         this.sliding = false;
-        if (brakeAdhesionNewtons > config.maximumAdhesionNewtons && Math.abs(velocity) > 0.01) {
+        if (brakeCylinderNewtons + dynamicBrakeNewtons> config.maximumAdhesionNewtons && Math.abs(velocity) > 0.01) {
             // WWWWWHHHEEEEE!!! SLIDING!!!!
             double kineticFriction = PhysicalMaterials.STEEL.kineticFriction(PhysicalMaterials.STEEL);
-            brakeAdhesionNewtons = config.massKg * kineticFriction;
+            brakeCylinderNewtons = kineticFriction * defaultNewtons * config.brakeSystemEfficiency * calculateBrakePressure();
+            dynamicBrakeNewtons *= kineticFriction;
             this.sliding = true;
         }
 
-        brakeAdhesionNewtons *= Config.ConfigBalance.brakeMultiplier;
+        brakeCylinderNewtons *= Config.ConfigBalance.brakeMultiplier;
+        dynamicBrakeNewtons *= Config.ConfigBalance.brakeMultiplier;
+        magnetBrakeNewtons *= Config.ConfigBalance.brakeMultiplier;
         
         if (config.trainBrakePressure > 0.9999)
             config.trainBrakePressure = 1;
 
-        return rollingResistanceNewtons + blockResistanceNewtons + brakeAdhesionNewtons
-                + directResistance + startingFriction + handBrakeNewtons + dynamicBrakeNewtons;
+        if (ConfigDebug.debugLogging) {
+            System.out.println("Rolling Resistance: " + rollingResistanceNewtons);
+            System.out.println("Block Resistance: " + blockResistanceNewtons);
+            System.out.println("Brake Cylinder: " + brakeCylinderNewtons);
+            System.out.println("Direct Resistance: " + directResistance);
+            System.out.println("Starting Resistance: " + startingFriction);
+            System.out.println("Dynamic Brake: " + dynamicBrakeNewtons);
+            System.out.println("Magnetic Brake: " + magnetBrakeNewtons);
+            System.out.println("Curve Resistance: " + curveResistanceNewtons); 
+        }
+        
+        return rollingResistanceNewtons + blockResistanceNewtons + brakeCylinderNewtons
+                + directResistance + startingFriction + dynamicBrakeNewtons + 
+                magnetBrakeNewtons + curveResistanceNewtons;
     }
 
     private boolean checkTileType(TileRailBase base, TrackItems type) {

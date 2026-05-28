@@ -1,5 +1,6 @@
 package cam72cam.immersiverailroading.model;
 
+import cam72cam.immersiverailroading.ConfigSound;
 import cam72cam.immersiverailroading.entity.EntityMoveableRollingStock;
 import cam72cam.immersiverailroading.entity.Locomotive;
 import cam72cam.immersiverailroading.gui.overlay.Readouts;
@@ -11,13 +12,19 @@ import cam72cam.immersiverailroading.model.components.ComponentProvider;
 import cam72cam.immersiverailroading.model.components.ModelComponent;
 import cam72cam.immersiverailroading.model.part.TrackFollower.TrackFollowers;
 import cam72cam.immersiverailroading.registry.LocomotiveDefinition;
+import cam72cam.mod.entity.ItemEntity;
+import cam72cam.mod.math.Vec3d;
+import cam72cam.mod.render.Particle.VanillaParticles;
 import util.Matrix4;
 
 import java.util.List;
+import java.util.Set;
 
 public class LocomotiveModel<ENTITY extends Locomotive, DEFINITION extends LocomotiveDefinition> extends FreightTankModel<ENTITY, DEFINITION> {
     private List<ModelComponent> components;
     private Bell bell;
+    private Compressor compressor;
+    private PartSound brakePressureSound;
 
     private ModelComponent frameFront;
     private ModelComponent frameRear;
@@ -34,11 +41,15 @@ public class LocomotiveModel<ENTITY extends Locomotive, DEFINITION extends Locom
     protected ModelState rearLocomotiveRocking;
     private final TrackFollowers frontTrackers;
     private final TrackFollowers rearTrackers;
+    
+    private VanillaParticle sandParticle;
 
     public LocomotiveModel(DEFINITION def) throws Exception {
         super(def);
         frontTrackers = new TrackFollowers(s -> new TrackFollower(s, frameFront, drivingWheelsFront != null ? drivingWheelsFront.wheels : null, true));
         rearTrackers = new TrackFollowers(s -> new TrackFollower(s, frameRear, drivingWheelsRear != null ? drivingWheelsRear.wheels : null, false));
+        
+        brakePressureSound = new PartSound(def.brakePressureSound, true, 40, ConfigSound.SoundCategories.RollingStock::brake);
     }
 
     @Override
@@ -77,23 +88,24 @@ public class LocomotiveModel<ENTITY extends Locomotive, DEFINITION extends Locom
         gauges.addAll(Readout.getReadouts(provider, rearLocomotiveRocking, ModelComponentType.COUPLED_X, ModelPosition.REAR_LOCOMOTIVE, Readouts.COUPLED_REAR));
 
         super.parseControllable(provider, def);
-        
-        if (def.hasIndependentBrake()) {
-            addGauge(provider, ModelComponentType.GAUGE_INDEPENDENT_BRAKE_X, Readouts.INDEPENDENT_BRAKE);
-            addControl(provider, ModelComponentType.INDEPENDENT_BRAKE_X);
-        }
 
         addGauge(provider, ModelComponentType.GAUGE_SPEED_X, Readouts.SPEED);
         addGauge(provider, ModelComponentType.GAUGE_THROTTLE_X, Readouts.THROTTLE);
         addGauge(provider, ModelComponentType.GAUGE_REVERSER_X, Readouts.REVERSER);
         addGauge(provider, ModelComponentType.GAUGE_TRAIN_BRAKE_X, Readouts.TRAIN_BRAKE);
+        addGauge(provider, ModelComponentType.GAUGE_TRACTIVE_EFFORT_X, Readouts.TRACTIVE_EFFORT);
+        addGauge(provider, ModelComponentType.GAUGE_MAIN_AIR_RESERVOIR_X, Readouts.MAIN_AIR_RESERVOIR);
+        addGauge(provider, ModelComponentType.GAUGE_SANDING_X, Readouts.SANDING);
+        addGauge(provider, ModelComponentType.GAUGE_SLIPPING_X, Readouts.SLIPPING);
 
         addControl(provider, ModelComponentType.BELL_CONTROL_X);
         addControl(provider, ModelComponentType.THROTTLE_BRAKE_X);
+        addControl(provider, ModelComponentType.THROTTLE_DYN_BRAKE_X);
         addControl(provider, ModelComponentType.THROTTLE_X);
         addControl(provider, ModelComponentType.REVERSER_X);
         addControl(provider, ModelComponentType.TRAIN_BRAKE_X);
         addControl(provider, ModelComponentType.SANDING_CONTROL_X);
+        addControl(provider, ModelComponentType.COMPRESSOR_CONTROL_X);
     }
 
     @Override
@@ -131,18 +143,21 @@ public class LocomotiveModel<ENTITY extends Locomotive, DEFINITION extends Locom
                 new ModelComponentType[]{ModelComponentType.CAB}
         );
         rocking.include(components);
-        bell = Bell.get(
-                provider, rocking,
-                def.bell);
+        bell = Bell.get(provider, rocking, def.bell);
+        compressor = Compressor.get(provider, rocking, def.compressor);
+        
+        sandParticle = VanillaParticle.get(provider, ModelComponentType.SAND_PARTICLE_X);
 
         super.parseComponents(provider, def);
     }
-
-    // TODO rename to tick
+    
     @Override
-    protected void effects(ENTITY stock) {
-        super.effects(stock);
+    protected void tick(ENTITY stock) {
+        super.tick(stock);
         bell.effects(stock, stock.getBell() > 0 ? 0.8f : 0);
+        compressor.effects(stock, stock.compressorActive && stock.isLowAir() && stock.providesElectricalPower() ? 0.2f : 0);
+        brakePressureSound.effects(stock, stock.trainBrakeDelta ? 0.1f : 0);
+        sandParticle.tick(stock, stock.isSanding, VanillaParticles.SAND_DUST, 2);
     }
 
     @Override
@@ -157,6 +172,30 @@ public class LocomotiveModel<ENTITY extends Locomotive, DEFINITION extends Locom
         }
 
         bell.removed(stock);
+        compressor.removed(stock);
+        brakePressureSound.removed(stock);
+    }
+
+    @Override
+    public Set<ItemEntity> filterItems(EntityMoveableRollingStock stock, List<ItemEntity> entities) {
+        Set<ItemEntity> result = super.filterItems(stock, entities);
+        if (this.cargoFillFront != null) {
+            Matrix4 inverted = getFrontLocomotiveMatrix(stock);
+            inverted.invert();
+            entities.stream().filter(entity -> {
+                final Vec3d point1 = inverted.apply(entity.getPosition());
+                return this.cargoFillFront.boxes.stream().anyMatch(box -> box.contains(point1));
+            }).forEach(result::add);
+        }
+        if (this.cargoFillRear != null) {
+            Matrix4 inverted = getRearLocomotiveMatrix(stock);
+            inverted.invert();
+            entities.stream().filter(entity -> {
+                final Vec3d point1 = inverted.apply(entity.getPosition());
+                return this.cargoFillRear.boxes.stream().anyMatch(box -> box.contains(point1));
+            }).forEach(result::add);
+        }
+        return result;
     }
 
     private Matrix4 getFrontLocomotiveMatrix(EntityMoveableRollingStock s) {
