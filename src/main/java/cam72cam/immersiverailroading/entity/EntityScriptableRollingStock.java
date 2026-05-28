@@ -3,11 +3,12 @@ package cam72cam.immersiverailroading.entity;
 import cam72cam.immersiverailroading.Config;
 import cam72cam.immersiverailroading.IRItems;
 import cam72cam.immersiverailroading.items.ItemTypewriter;
+import cam72cam.immersiverailroading.library.KeyTypes;
 import cam72cam.immersiverailroading.library.Permissions;
+import cam72cam.immersiverailroading.registry.EntityRollingStockDefinition;
 import cam72cam.immersiverailroading.script.*;
 import cam72cam.immersiverailroading.script.library.ILuaEvent;
 import cam72cam.immersiverailroading.script.library.LuaSerialization;
-import cam72cam.immersiverailroading.script.library.ScheduleEvent;
 import cam72cam.immersiverailroading.script.modules.*;
 import cam72cam.immersiverailroading.script.sound.SoundConfig;
 import cam72cam.immersiverailroading.textfield.TextFieldConfig;
@@ -25,7 +26,18 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public abstract class EntityScriptableRollingStock extends EntityCoupleableRollingStock implements ILuaEvent {
+    /**
+     * Lazily initialised. Stocks without their own script never allocate a context from {@link #onTick()}.
+     * External callers (e.g. the {@code LUA_SCRIPTER} augment via {@link #getGlobals()}) trigger
+     * {@link #ensureContext()} on demand, so a stock only pays the LuaJ-VM cost when something actually
+     * touches its globals.
+     * @see cam72cam.immersiverailroading.tile.TileRailBase
+     */
     private LuaContext context;
+    /**
+     * Cached result of {@link #hasOwnScript()}. {@code null} = not yet computed.
+     */
+    private Boolean hasOwnScript;
     /**
      * Used by {@link IRModule}
      */
@@ -43,9 +55,18 @@ public abstract class EntityScriptableRollingStock extends EntityCoupleableRolli
      */
     @TagSync
     @TagField(value = "luaTagField", mapper = LuaSerialization.LuaMapper.class)
-    private final Map<String, LuaValue> tagFields = new HashMap<>();
+    private Map<String, LuaValue> tagFields = new HashMap<>();
 
-    protected final Set<ScheduleEvent> schedule = new HashSet<>();
+    /**
+     * Pending {@code Utils.wait(...)} callbacks bucketed by absolute tick at which they should fire.
+     * O(1) per-tick lookup beats the previous {@code HashSet#removeIf} pass that allocated an iterator
+     * and decremented every entry on every tick.
+     */
+    protected final Map<Long, List<Runnable>> schedule = new HashMap<>();
+    
+    @TagSync
+    @TagField(value = "LUAGUITEXT", mapper = LuaSerialization.LuaTextMapper.class)
+    private Map<String, String> luaGuiText = new HashMap<>();
 
     /**
      * <h2>Overrides</h2>
@@ -63,27 +84,22 @@ public abstract class EntityScriptableRollingStock extends EntityCoupleableRolli
             return;
         }
 
-        if (getDefinition().script == null) {
+        // Skip the entire Lua pipeline for stocks without a script of their own.
+        // External callers can still trigger lazy context creation via getGlobals().
+        if (!hasOwnScript()) {
             return;
         }
 
-        if (context == null) {
-            context = LuaContext.create(this);
+        ensureContext();
 
-            registerModules();
-            loadLuaScript();
-
-            context.refreshSerialization(tagFields);
-        }
-
-        schedule.removeIf(t -> {
-            t.ticks--;
-            if (t.ticks <= 0) {
-                t.runnable.run();
-                return true;
+        if (!schedule.isEmpty()) {
+            List<Runnable> due = schedule.remove((long) getTickCount());
+            if (due != null) {
+                for (int i = 0; i < due.size(); i++) {
+                    due.get(i).run();
+                }
             }
-            return false;
-        });
+        }
 
         triggerEvent("onTick");
     }
@@ -108,13 +124,33 @@ public abstract class EntityScriptableRollingStock extends EntityCoupleableRolli
         return luaEventCallbacks;
     }
 
+    @Override
+    public void handleKeyPress(Player source, KeyTypes key, boolean disableIndependentThrottle) {
+        boolean hasPermission;
+        switch (key) {
+            case INDEPENDENT_BRAKE_UP:
+            case INDEPENDENT_BRAKE_DOWN:
+            case INDEPENDENT_BRAKE_ZERO:
+                hasPermission = source.hasPermission(Permissions.BRAKE_CONTROL);
+                break;
+            default:
+                hasPermission = source.hasPermission(Permissions.LOCOMOTIVE_CONTROL);
+                break;
+        }
+        if (getWorld().isServer) {
+            triggerEvent("onKeyPress", LuaValue.valueOf(key.toString()), LuaValue.valueOf(hasPermission));
+        }
+
+        super.handleKeyPress(source, key, disableIndependentThrottle);
+    }
+
     private void registerModules() {
         context.registerLibrary(new ScriptVectorUtil.VectorLibrary());
         context.registerLibrary(new MarkupModule());
 
         context.registerLibrary(new IRModule(this));
         context.registerLibrary(new WorldModule(getWorld()));
-        context.registerLibrary(new DebugModule(this));
+        context.registerLibrary(new StockDebugModule(this));
         context.registerLibrary(new EventModule(this));
     }
 
@@ -122,14 +158,47 @@ public abstract class EntityScriptableRollingStock extends EntityCoupleableRolli
         Identifier script = getDefinition().script;
 
         List<String> modules = getDefinition().addScripts;
-        context.loadModules(modules, script);
+        if (modules != null && !modules.isEmpty() && script != null) {
+            context.loadModules(modules, script);
+        }
 
-        if (script.canLoad()) {
+        if (script != null && script.canLoad()) {
             context.loadScript(script);
         }
     }
 
+    /**
+     * @return {@code true} if this stock's definition references at least one Lua resource
+     *         (a {@code script} identifier that resolves, or a non-empty {@code add_scripts} list).
+     *         Cached after the first successful read of the definition.
+     */
+    private boolean hasOwnScript() {
+        if (hasOwnScript == null) {
+            EntityRollingStockDefinition def = getDefinition();
+            if (def == null) {
+                // Definition not ready yet; recompute next tick instead of caching false.
+                return false;
+            }
+            Identifier script = def.script;
+            List<String> modules = def.addScripts;
+            hasOwnScript = (script != null && script.canLoad())
+                        || (modules != null && !modules.isEmpty());
+        }
+        return hasOwnScript;
+    }
+
+    private void ensureContext() {
+        if (context != null) {
+            return;
+        }
+        context = LuaContext.create(this);
+        registerModules();
+        loadLuaScript();
+        context.refreshSerialization(tagFields);
+    }
+
     public Globals getGlobals() {
+        ensureContext();
         return context.getGlobals();
     }
 
@@ -141,22 +210,25 @@ public abstract class EntityScriptableRollingStock extends EntityCoupleableRolli
         if (config.isGlobal()) {
             mapTrain(this, false, stock -> {
                 EntityScriptableRollingStock next = (EntityScriptableRollingStock) stock;
-                if (next.getDefinition().getModel().groups().stream().anyMatch(g -> g.contains(config.getObject()))) {
-                    next.textFields.put(config.getObject(), config);
-                }
+                next.textFields.computeIfPresent(config.getObject(), (k, v) -> new TextFieldConfig(config));
             });
         }
 
         if (config.getLinked() != null && !config.getLinked().isEmpty()) {
-            config.getLinked().forEach(l -> {
-                TextFieldConfig linked = textFields.get(String.format("TEXTFIELD_%s", l));
+            for (String linkedObject : config.getLinked()) {
+                if (linkedObject.equals(config.getObject())) {
+                    continue;
+                }
+
+                TextFieldConfig linked = textFields.get(linkedObject);
+
                 if (linked == null) {
-                    return;
+                    continue;
                 }
 
                 linked.copyConfig(config);
                 initTextField(linked);
-            });
+            }
         }
 
         textFields.put(config.getObject(), config);
@@ -178,6 +250,11 @@ public abstract class EntityScriptableRollingStock extends EntityCoupleableRolli
     @LuaFunction(module = "Utils")
     public void wait(LuaValue sec, LuaValue func) {
         float seconds = sec.tofloat();
+        // Clamp to >= 1 so wait(0, fn) still fires on a future tick (matches the previous
+        // semantics of 'ticks-- ... if (ticks <= 0)' which always required at least one
+        // onTick pass after the wait() call before firing).
+        int delayTicks = Math.max(1, Math.round(seconds * 20));
+        long fireAt = (long) getTickCount() + delayTicks;
 
         Runnable runnable = () -> {
             try {
@@ -187,9 +264,14 @@ public abstract class EntityScriptableRollingStock extends EntityCoupleableRolli
             }
         };
 
-        int ticks = Math.round(seconds * 20);
+        schedule.computeIfAbsent(fireAt, k -> new ArrayList<>(2)).add(runnable);
+    }
 
-        ScheduleEvent event = new ScheduleEvent(runnable, ticks, func);
-        schedule.add(event);
+    public void setGuiText(LuaValue id, LuaValue value) {
+        luaGuiText.put(id.toString(), value.toString());
+    }
+
+    public Map<String, String> getLuaGuiText() {
+        return luaGuiText;
     }
 }

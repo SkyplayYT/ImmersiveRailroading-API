@@ -9,7 +9,6 @@ import cam72cam.immersiverailroading.library.TrackComponent;
 import cam72cam.immersiverailroading.model.TrackModel;
 import cam72cam.mod.item.Fuzzy;
 import cam72cam.mod.item.ItemStack;
-import org.apache.commons.lang3.tuple.Pair;
 import trackapi.lib.Gauges;
 
 import java.util.*;
@@ -40,9 +39,14 @@ public class TrackDefinition {
         double spacing = object.getValue("model_spacing_m").asDouble( model_gauge_m / Gauges.STANDARD);
 
         this.models = new ArrayList<>();
+
         DataBlock models = object.getBlock("models");
+        for (Map.Entry<String, DataBlock> entry : models.getBlockMap().entrySet()) {
+            this.models.add(TrackModel.parse(entry.getKey(), entry.getValue(), model_gauge_m, spacing));
+        }
+
         for (Map.Entry<String, DataBlock.Value> entry : models.getValueMap().entrySet()) {
-            this.models.add(new TrackModel(entry.getKey(), entry.getValue().asIdentifier(), model_gauge_m, spacing));
+            this.models.add(new TrackModel(entry.getKey(), entry.getValue().asIdentifier(), model_gauge_m, spacing, true));
         }
 
         DataBlock mats = object.getBlock("materials");
@@ -56,7 +60,7 @@ public class TrackDefinition {
                             part.getValue("cost").asFloat()
                     ));
                 }
-                if (parts.size() > 0) {
+                if (!parts.isEmpty()) {
                     materials.put(comp, parts);
                 }
             }
@@ -86,6 +90,7 @@ public class TrackDefinition {
             }
         }
 
+        @SuppressWarnings("deprecation")
         public List<ItemStack> examples(Gauge gauge) {
             List<ItemStack> examples = new ArrayList<>();
 
@@ -105,6 +110,7 @@ public class TrackDefinition {
             return examples;
         }
 
+        @SuppressWarnings("deprecation")
         public boolean matches(ItemStack stack) {
             if (item.startsWith("ore:")) {
                 String oreName = item.replace("ore:", "");
@@ -118,7 +124,7 @@ public class TrackDefinition {
         private List<ItemType> items;
         public final float cost;
         TrackMaterial(String item, float cost) {
-            this.items = Arrays.stream(item.split(",")).map(s -> s.trim()).map(ItemType::new).collect(Collectors.toList());
+            this.items = Arrays.stream(item.split(",")).map(String::trim).map(ItemType::new).collect(Collectors.toList());
             this.cost = cost;
         }
 

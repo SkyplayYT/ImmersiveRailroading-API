@@ -2,12 +2,10 @@ package cam72cam.immersiverailroading;
 
 import cam72cam.immersiverailroading.entity.*;
 import cam72cam.immersiverailroading.entity.physics.chrono.ServerChronoState;
+import cam72cam.immersiverailroading.gui.RailAugmentGUI;
 import cam72cam.immersiverailroading.gui.overlay.GuiBuilder;
 import cam72cam.immersiverailroading.items.ItemPaintBrush;
-import cam72cam.immersiverailroading.library.GuiTypes;
-import cam72cam.immersiverailroading.library.KeyTypes;
-import cam72cam.immersiverailroading.library.Particles;
-import cam72cam.immersiverailroading.library.Permissions;
+import cam72cam.immersiverailroading.library.*;
 import cam72cam.immersiverailroading.model.StockModel;
 import cam72cam.immersiverailroading.multiblock.*;
 import cam72cam.immersiverailroading.net.*;
@@ -65,7 +63,8 @@ public class ImmersiveRailroading extends ModCore.Mod {
 		return MODID;
 	}
 
-	@Override
+	@SuppressWarnings("incomplete-switch")
+    @Override
 	public void commonEvent(ModEvent event) {
 		CompatLoader.common(event);
 
@@ -95,12 +94,14 @@ public class ImmersiveRailroading extends ModCore.Mod {
 				Packet.register(TextFieldPacket::new, PacketDirection.ClientToServer);
 				Packet.register(TextFieldClientPacket::new, PacketDirection.ServerToClient);
 				Packet.register(SoundConfig.SoundPacket::new, PacketDirection.ServerToClient);
+				Packet.register(RailAugmentGUI.AugmentFilterChangePacket::new, PacketDirection.ClientToServer);
 
 				ServerChronoState.register();
 
 				IRBlocks.register();
 				IRItems.register();
 				GuiTypes.register();
+				DamageTypes.register();
 
 				Command.register(new IRCommand());
 
@@ -129,7 +130,8 @@ public class ImmersiveRailroading extends ModCore.Mod {
 
 	}
 
-	@Override
+	@SuppressWarnings("incomplete-switch")
+    @Override
 	public void clientEvent(ModEvent event) {
 		switch (event) {
 			case CONSTRUCT:

@@ -1,9 +1,10 @@
 package cam72cam.immersiverailroading.registry;
 
+import cam72cam.immersiverailroading.ConfigGraphics;
 import cam72cam.immersiverailroading.ImmersiveRailroading;
 import cam72cam.immersiverailroading.entity.EntityRollingStock;
-import cam72cam.immersiverailroading.entity.LocomotiveDiesel;
-import cam72cam.immersiverailroading.gui.overlay.GuiBuilder;
+import cam72cam.immersiverailroading.library.unit.ForceDisplayType;
+import cam72cam.immersiverailroading.library.unit.PowerDisplayType;
 import cam72cam.immersiverailroading.entity.Locomotive;
 import cam72cam.immersiverailroading.util.DataBlock;
 import cam72cam.immersiverailroading.library.Gauge;
@@ -13,7 +14,6 @@ import cam72cam.immersiverailroading.model.StockModel;
 import cam72cam.immersiverailroading.util.Speed;
 import cam72cam.mod.resource.Identifier;
 
-import java.io.IOException;
 import java.util.List;
 
 public abstract class LocomotiveDefinition extends FreightDefinition {
@@ -21,8 +21,8 @@ public abstract class LocomotiveDefinition extends FreightDefinition {
     public boolean toggleBell;
     public SoundDefinition bell;
     public String works;
-    private double power;
-    private double traction;
+    private double power_kW;
+    private double traction_N;
     private Speed maxSpeed;
     private boolean hasRadioEquipment;
     public boolean muliUnitCapable;
@@ -32,15 +32,14 @@ public abstract class LocomotiveDefinition extends FreightDefinition {
     private double factorOfAdhesion;
     private boolean speedLimiter;
     protected double powerMultiplier;
-    private boolean hasIndependentBrake;
+    private int brakeNotches;
+    public SoundDefinition compressor;
+    private boolean hasCompressor;
+    private float mainAirSizeFactor;
 
     LocomotiveDefinition(Class<? extends EntityRollingStock> type, String defID, DataBlock data) throws Exception {
         super(type, defID, data);
        
-    }
-    
-    public GuiBuilder getRemoteOverlay(DataBlock data) throws IOException {
-        return hasIndependentBrake() ? GuiBuilder.parse(new Identifier(ImmersiveRailroading.MODID, "gui/default/independent.caml")) : null;
     }
     
     @Override
@@ -60,16 +59,32 @@ public abstract class LocomotiveDefinition extends FreightDefinition {
         
         isCabCar = readCabCarFlag(data);
         if (isCabCar) {
-            power = 0;
-            traction = 0;
+            power_kW = 0;
+            traction_N = 0;
             maxSpeed = Speed.ZERO;
             muliUnitCapable = true;
             factorOfAdhesion = 0;
         } else {
-            double powerKW = Math.ceil(properties.getValue("horsepower_kw").asDouble(0) * 1.341 * internal_inv_scale);
-            power = powerKW != 0 ? powerKW : Math.ceil(properties.getValue("horsepower").asInteger() * internal_inv_scale);
-            double tractionN = Math.ceil(properties.getValue("tractive_effort_n").asDouble(0) / 4.44822 * internal_inv_scale);
-            traction = tractionN != 0 ? tractionN : Math.ceil(properties.getValue("tractive_effort_lbf").asInteger() * internal_inv_scale);
+            if (properties.getValue("horsepower").asFloat() != null) {
+                power_kW = properties.getValue("horsepower").asFloat() * PowerDisplayType.hpToKW * internal_inv_scale;
+            } else if (properties.getValue("power_hp").asFloat() != null) {
+                power_kW = properties.getValue("power_hp").asFloat() * PowerDisplayType.hpToKW * internal_inv_scale;
+            } else if (properties.getValue("power_ps").asFloat() != null) {
+                power_kW = properties.getValue("power_ps").asFloat() * PowerDisplayType.PSToKW * internal_inv_scale;
+            } else if (properties.getValue("power_kw").asFloat() != null) {
+                power_kW = properties.getValue("power_kw").asFloat() * internal_inv_scale;
+            } else {
+                power_kW = properties.getValue("power_w").asFloat() / 1000 * internal_inv_scale;
+            }
+
+            if (properties.getValue("tractive_effort_lbf").asFloat() != null) {
+                traction_N = properties.getValue("tractive_effort_lbf").asFloat() * ForceDisplayType.lbfToNewton * internal_inv_scale;
+            } else if (properties.getValue("tractive_effort_kn").asFloat() != null) {
+                traction_N = properties.getValue("tractive_effort_kn").asFloat() * 1000 * internal_inv_scale;
+            } else {
+                traction_N = properties.getValue("tractive_effort_n").asFloat() * internal_inv_scale;
+            }
+
             factorOfAdhesion = properties.getValue("factor_of_adhesion").asDouble(4);
             maxSpeed = Speed.fromMetric(Math.ceil(properties.getValue("max_speed_kmh").asDouble() * internal_inv_scale));
             muliUnitCapable = properties.getValue("multi_unit_capable").asBoolean();
@@ -78,7 +93,13 @@ public abstract class LocomotiveDefinition extends FreightDefinition {
         toggleBell = properties.getValue("toggle_bell").asBoolean();
         isCog = properties.getValue("cog").asBoolean();
         speedLimiter = properties.getValue("speed_limiter").asBoolean(true);
-        hasIndependentBrake = properties.getValue("independent_brake").asBoolean();
+        brakeNotches = properties.getValue("brake_notches").asInteger(0);
+        hasCompressor = properties.getValue("has_compressor").asBoolean(true);
+        mainAirSizeFactor = properties.getValue("main_reservoir_size_factor").asFloat(1f);
+        
+        DataBlock sounds = data.getBlock("sounds");
+        bell = SoundDefinition.getOrDefault(sounds, "bell");
+        compressor = SoundDefinition.getOrDefault(sounds, "compressor");
     }
 
     protected boolean readCabCarFlag(DataBlock data) {
@@ -95,34 +116,50 @@ public abstract class LocomotiveDefinition extends FreightDefinition {
         List<String> tips = super.getTooltip(gauge);
         tips.add(GuiText.LOCO_WORKS.toString(this.works));
         if (!isCabCar) {
-            tips.add(GuiText.LOCO_HORSE_POWER.toString(getHorsePower(gauge)));
-            tips.add(GuiText.LOCO_TRACTION.toString(getStartingTractionNewtons(gauge)));
-            tips.add(GuiText.LOCO_MAX_SPEED.toString(getMaxSpeed(gauge).metric()));
+            float power = ConfigGraphics.powerUnit.convertFromWatt(this.getWatt(gauge));
+            String p = String.format("%.0f", power);
+            tips.add(GuiText.LOCO_POWER.toString(p) + " " + ConfigGraphics.powerUnit.toUnitString());
+            float force = ConfigGraphics.forceUnit.convertFromNewton(this.getStartingTractionNewtons(gauge));
+            String f = String.format("%.0f", force);
+            tips.add(GuiText.LOCO_TRACTION.toString(f) + " " + ConfigGraphics.forceUnit.toUnitString());
+            float speed = (float) ConfigGraphics.speedUnit.convertFromKmh(this.getMaxSpeed(gauge).metric());
+            String v = String.format("%.0f", speed);
+            tips.add(GuiText.LOCO_MAX_SPEED.toString(v) + " " + ConfigGraphics.speedUnit.toUnitString());
         }
         return tips;
     }
 
-    public int getHorsePower(Gauge gauge){
-        return (int) Math.ceil(gauge.scale() * this.power);
+    public float getHorsePower(Gauge gauge) {
+        return (float) (gauge.scale() * this.power_kW * PowerDisplayType.kWToHp);
     }
 
-    public int getScriptedHorsePower(Gauge gauge, Locomotive stock) {
+    public float getScriptedHorsePower(Gauge gauge, Locomotive stock) {
         return stock.localHorsepower != -1
-                ? (int) Math.ceil(gauge.scale() * stock.localHorsepower)
-                : (int) Math.ceil(gauge.scale() * this.power);
+                ? (float) (gauge.scale() * stock.localHorsepower * PowerDisplayType.kWToHp)
+                : getHorsePower(gauge);
+    }
+
+    public float getWatt(Gauge gauge) {
+        return (float) (gauge.scale() * this.power_kW * 1000);
+    }
+
+    public float getScriptedWatt(Gauge gauge, Locomotive stock) {
+        return stock.localWatt != -1
+                ? (float) (gauge.scale() * stock.localWatt * 100)
+                : getWatt(gauge);
     }
 
     /**
      * @return tractive effort in newtons
      */
-    public int getStartingTractionNewtons(Gauge gauge) {
-        return (int) Math.ceil(gauge.scale() * this.traction * 4.44822);
+    public float getStartingTractionNewtons(Gauge gauge) {
+        return (float) (gauge.scale() * this.traction_N);
     }
 
-    public int getScriptedStartingTractionNewtons(Gauge gauge, Locomotive stock) {
+    public float getScriptedStartingTractionNewtons(Gauge gauge, Locomotive stock) {
         return stock.localTraction != -1
-                ? (int) Math.ceil(gauge.scale() * stock.localTraction * 4.44822)
-                : (int) Math.ceil(gauge.scale() * this.traction * 4.44822);
+                ? (float) (gauge.scale() * stock.localTraction)
+                : getStartingTractionNewtons(gauge);
     }
 
     public Speed getMaxSpeed(Gauge gauge){
@@ -159,36 +196,6 @@ public abstract class LocomotiveDefinition extends FreightDefinition {
     public double factorOfAdhesion() {
         return this.factorOfAdhesion;
     }
-
-    @Override
-    public void setTraction(double val) {
-        this.traction = val;
-    }
-
-    @Override
-    public void setHorsepower(double val) {
-        this.power = val;
-    }
-
-    @Override
-    public void setMaxSpeed(double val) {
-        this.maxSpeed = Speed.fromMetric(val);
-    }
-
-    @Override
-    public double getMaxSpeed() {
-        return this.maxSpeed.metric();
-    }
-
-    @Override
-    public double getTraction() {
-        return traction;
-    }
-
-    @Override
-    public double getHorsepower() {
-        return this.power;
-    }
     
     public boolean isSpeedLimiter() {
         return this.speedLimiter;
@@ -198,7 +205,19 @@ public abstract class LocomotiveDefinition extends FreightDefinition {
         return powerMultiplier;
     }
     
-    public boolean hasIndependentBrake() {
-        return hasIndependentBrake;
+    public String getWorks() {
+        return works;
+    }
+    
+    public int getBrakeNotches() {
+        return brakeNotches;
+    }
+    
+    public boolean hasCompressor() {
+        return hasCompressor;
+    }
+    
+    public float getMainReservoirSizeFactor() {
+        return mainAirSizeFactor;
     }
 }
