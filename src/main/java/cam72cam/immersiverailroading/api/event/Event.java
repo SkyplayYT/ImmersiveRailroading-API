@@ -21,7 +21,7 @@ public class Event<T> {
                             try {
                                 method.invoke(data, this);
                             } catch (IllegalAccessException | InvocationTargetException e) {
-                                ImmersiveRailroading.warn(e.getMessage());
+                                System.out.println(e.getMessage());
                             }
                         }
                     }
