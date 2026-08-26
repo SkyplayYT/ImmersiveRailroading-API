@@ -1,5 +1,6 @@
 package cam72cam.immersiverailroading;
 
+import cam72cam.immersiverailroading.gsmr.Ringtone;
 import cam72cam.mod.config.ConfigFile.Comment;
 import cam72cam.mod.config.ConfigFile.Name;
 import cam72cam.mod.config.ConfigFile.File;
@@ -145,6 +146,11 @@ public class ConfigSound {
 			@Range(min = 0, max = 100)
 			public static int machine_category = 100;
 			public static float category() { return immersive_railroading / 100f * machine_category / 100f; }
+		}
+		@Name("Telephone")
+		public static class Telephone {
+			@Name("Ringtone")
+			public static Ringtone telephone = Ringtone.NORMAL_RING;
 		}
 	}
 

@@ -394,3 +394,7 @@ immersiverailroading:entity.freight.waycar=Waycar
 immersiverailroading:entity.tank.kamx_t=Kamx T
 immersiverailroading:entity.tank.slag_car_1=Slag Car 1
 immersiverailroading:entity.tank.tank_us2=Tank US 2
+
+immersiverailroading:gsmr.call_message=%s is calling you.
+immersiverailroading:gsmr.accept=[PICK UP]
+immersiverailroading:gsmr.reject=[REJECT]

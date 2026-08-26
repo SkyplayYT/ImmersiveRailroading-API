@@ -1,7 +1,13 @@
 package cam72cam.immersiverailroading;
 
+import cam72cam.immersiverailroading.api.event.ListenerManager;
 import cam72cam.immersiverailroading.entity.*;
 import cam72cam.immersiverailroading.entity.physics.chrono.ServerChronoState;
+import cam72cam.immersiverailroading.gsmr.TrainManager;
+import cam72cam.immersiverailroading.gsmr.commands.CallCommands;
+import cam72cam.immersiverailroading.gsmr.commands.HangUpCommand;
+import cam72cam.immersiverailroading.gsmr.commands.RegisterCommand;
+import cam72cam.immersiverailroading.gsmr.commands.UnRegisterCommand;
 import cam72cam.immersiverailroading.gui.RailAugmentGUI;
 import cam72cam.immersiverailroading.gui.overlay.GuiBuilder;
 import cam72cam.immersiverailroading.items.ItemPaintBrush;
@@ -104,6 +110,12 @@ public class ImmersiveRailroading extends ModCore.Mod {
 				DamageTypes.register();
 
 				Command.register(new IRCommand());
+				Command.register(new CallCommands());
+				Command.register(new HangUpCommand());
+				Command.register(new RegisterCommand());
+				Command.register(new UnRegisterCommand());
+
+				ListenerManager.registerListener(new TrainManager.GSMRButtonListener());
 
 				break;
 			case INITIALIZE:

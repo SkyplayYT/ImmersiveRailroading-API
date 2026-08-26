@@ -4,6 +4,9 @@ import cam72cam.immersiverailroading.Config.ConfigDamage;
 import cam72cam.immersiverailroading.ConfigSound;
 import cam72cam.immersiverailroading.IRItems;
 import cam72cam.immersiverailroading.ImmersiveRailroading;
+import cam72cam.immersiverailroading.gsmr.CallManager;
+import cam72cam.immersiverailroading.gsmr.PhoneNumberManager;
+import cam72cam.immersiverailroading.gsmr.TrainManager;
 import cam72cam.immersiverailroading.items.ItemPaintBrush;
 import cam72cam.immersiverailroading.library.*;
 import cam72cam.immersiverailroading.model.part.Control;
@@ -157,6 +160,17 @@ public class EntityRollingStock extends CustomEntity implements ITickable, IClic
 		if (type == DamageType.EXPLOSION) {
 			if (source == null || !source.isMob()) {
 				if (amount > 5 && ConfigDamage.trainMobExplosionDamage) {
+					if(PhoneNumberManager.hasBeingAPhoneNumber(this.getUUID())) {
+						if(CallManager.isBeingInCall(this.getUUID())) {
+							CallManager.hangUp(this.getUUID());
+						}
+						PhoneNumberManager.unregisterPhoneNumber(this.getUUID());
+						TrainManager.unregisterTrain(this.getUUID());
+						if(TrainManager.isTrainLinked(this.getUUID())) {
+							TrainManager.removeTrainPlayerLink(this.getUUID());
+						}
+					}
+
 					this.kill();
 				}
 			}
@@ -165,6 +179,17 @@ public class EntityRollingStock extends CustomEntity implements ITickable, IClic
 		if (type == DamageType.OTHER && source != null && source.isPlayer()) {
 			Player player = source.asPlayer();
 			if (player.isCrouching()) {
+				if(PhoneNumberManager.hasBeingAPhoneNumber(this.getUUID())) {
+					if(CallManager.isBeingInCall(this.getUUID())) {
+						CallManager.hangUp(this.getUUID());
+					}
+					PhoneNumberManager.unregisterPhoneNumber(this.getUUID());
+					TrainManager.unregisterTrain(this.getUUID());
+					if(TrainManager.isTrainLinked(this.getUUID())) {
+						TrainManager.removeTrainPlayerLink(this.getUUID());
+					}
+				}
+
 				this.kill();
 			}
 		}

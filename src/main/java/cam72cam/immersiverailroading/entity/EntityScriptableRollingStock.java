@@ -152,6 +152,7 @@ public abstract class EntityScriptableRollingStock extends EntityCoupleableRolli
         context.registerLibrary(new WorldModule(getWorld()));
         context.registerLibrary(new StockDebugModule(this));
         context.registerLibrary(new EventModule(this));
+        context.registerLibrary(new GSMRModule(this));
     }
 
     private void loadLuaScript() {
