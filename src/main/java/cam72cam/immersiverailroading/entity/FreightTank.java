@@ -15,7 +15,6 @@ import cam72cam.mod.serialization.StrictTagMapper;
 import cam72cam.mod.serialization.TagField;
 import org.apache.commons.lang3.ArrayUtils;
 
-import javax.annotation.Nullable;
 import java.util.List;
 
 public abstract class FreightTank extends Freight {
@@ -36,7 +35,6 @@ public abstract class FreightTank extends Freight {
 	 */
 	public abstract FluidQuantity getTankCapacity();
 
-	@Nullable
 	public abstract List<Fluid> getFluidFilter();
 
 	protected int[] getContainerInputSlots() {
@@ -67,6 +65,13 @@ public abstract class FreightTank extends Freight {
 	
 	public int getLiquidAmount() {
 		return fluidAmount;
+	}
+	
+	public void setLiquidAmount(int fluidAmount, String fluidType) {
+		this.fluidAmount = fluidAmount;
+		if (fluidType != null) {
+			this.fluidType = fluidType;
+		}
 	}
 	
 	public Fluid getLiquid() {

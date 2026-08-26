@@ -24,6 +24,7 @@ import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.serialization.TagCompound;
 import cam72cam.mod.serialization.TagField;
+import cam72cam.mod.util.DegreeFuncs;
 import cam72cam.mod.world.World;
 
 import java.util.ArrayList;
@@ -35,6 +36,10 @@ public abstract class EntityMoveableRollingStock extends EntityCustomPlayerMovem
     private Float frontYaw;
     @TagField("rearYaw")
     private Float rearYaw;
+    @TagField("frontRoll")
+    private Float frontRoll;
+    @TagField("rearRoll")
+    private Float rearRoll;
     @TagField("distanceTraveled")
     public double distanceTraveled = 0;
     public double distanceTraveledReal = 0;
@@ -56,7 +61,8 @@ public abstract class EntityMoveableRollingStock extends EntityCustomPlayerMovem
     @TagSync
     @TagField("BRAKE_PRESSURE")
     private float trainBrakePressure = 0;
-    public boolean locked = true;
+    public boolean locked = true;    
+    public boolean isSingleRelease;
 
     @TagSync
     @TagField("BRAKE_CYLINDER_PRESSURE")
@@ -87,6 +93,12 @@ public abstract class EntityMoveableRollingStock extends EntityCustomPlayerMovem
         }
         if (rearYaw == null) {
             rearYaw = getRotationYaw();
+        }
+        if (frontRoll == null) {
+            frontRoll = getRotationRoll();
+        }
+        if (rearRoll == null) {
+            rearRoll = getRotationRoll();
         }
     }
 
@@ -138,6 +150,10 @@ public abstract class EntityMoveableRollingStock extends EntityCustomPlayerMovem
             currentSpeed = Speed.fromMinecraft(speed);
         }
         return currentSpeed;
+    }
+    
+    public Speed getRealSpeed() {
+    	return getCurrentSpeed();
     }
 
     public void setCurrentSpeed(Speed newSpeed) {
@@ -290,6 +306,7 @@ public abstract class EntityMoveableRollingStock extends EntityCustomPlayerMovem
             if (state != null) {
                 this.brakeCylinderPressure = state.config.brakeCylinderPressure;
                 this.trainBrakePressure = state.config.trainBrakePressure;
+                this.isSingleRelease = state.config.isSingleRelease;
                 this.sliding = state.sliding;
 
                 if (state.collided > 0.1 && getTickCount() - lastCollision > 20) {
@@ -333,9 +350,12 @@ public abstract class EntityMoveableRollingStock extends EntityCustomPlayerMovem
         double prevPosZ = prevPos.z;
 
         this.setRotationYaw(currentPos.rotationYaw);
+        this.setRotationRoll(currentPos.rotationRoll);
         this.setRotationPitch(currentPos.rotationPitch);
         this.frontYaw = currentPos.frontYaw;
         this.rearYaw = currentPos.rearYaw;
+        this.frontRoll = currentPos.frontRoll;
+        this.rearRoll = currentPos.rearRoll;
 
         this.currentSpeed = currentPos.speed;
 
@@ -461,6 +481,25 @@ public abstract class EntityMoveableRollingStock extends EntityCustomPlayerMovem
 
     public void setRearYaw(float rearYaw) {
         this.rearYaw = rearYaw;
+    }
+
+    public float getFrontRoll() {
+        if(this.frontRoll != null) {
+            return this.frontRoll;
+        }
+        return this.getRotationRoll();//This seems will only happen in some case when spawning train on MinecraftRail?
+    }
+    public void setFrontRoll(float val) {
+        this.frontRoll = val;
+    }
+    public float getRearRoll() {
+        if(this.rearRoll != null) {
+            return this.rearRoll;
+        }
+        return this.getRotationRoll();
+    }
+    public void setRearRoll(float val) {
+        this.rearRoll = val;
     }
 
     public float getTickSkew() {
@@ -650,5 +689,23 @@ public abstract class EntityMoveableRollingStock extends EntityCustomPlayerMovem
     
     public double getMagnetBrakeNewton() {
         return getCurrentSpeed().metric() > 50 && getBrakeCylinderPressure() > 0.95 ? this.getDefinition().getMagnetBrakeNewton() : 0;
+    }
+    
+    public float getAngle() {
+        float yawDelta = DegreeFuncs.delta(getFrontYaw(), getRearYaw()) /
+                Math.abs(getDefinition().getBogeyFront(gauge) - getDefinition().getBogeyRear(gauge));
+        return yawDelta;
+    }
+    
+    public float getCurveCoefficient() {
+        return getDefinition().getCurveCoefficient() * Config.ConfigBalance.curveResistanceMultiplier;
+    }
+    
+    public float getDragCoefficient() {
+        return getDefinition().getDragCoefficient() * Config.ConfigBalance.dragResistanceMultiplier;
+    }
+    
+    public float getDragExponent() {
+    	return Config.ConfigBalance.dragResistanceExponent;
     }
 }

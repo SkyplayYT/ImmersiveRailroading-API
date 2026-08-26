@@ -3,11 +3,13 @@ package cam72cam.immersiverailroading.entity;
 import cam72cam.immersiverailroading.Config;
 import cam72cam.immersiverailroading.Config.ConfigBalance;
 import cam72cam.immersiverailroading.inventory.SlotFilter;
+import cam72cam.immersiverailroading.library.Gauge;
 import cam72cam.immersiverailroading.library.GuiTypes;
 import cam72cam.immersiverailroading.library.ModelComponentType;
 import cam72cam.immersiverailroading.library.Permissions;
 import cam72cam.immersiverailroading.library.unit.PressureDisplayType;
 import cam72cam.immersiverailroading.model.part.Control;
+import cam72cam.immersiverailroading.registry.EntityRollingStockDefinition;
 import cam72cam.immersiverailroading.registry.LocomotiveSteamDefinition;
 import cam72cam.immersiverailroading.util.BurnUtil;
 import cam72cam.immersiverailroading.util.FluidQuantity;
@@ -81,7 +83,7 @@ public class LocomotiveSteam extends Locomotive {
 		return boilerTemperature;
 	}
 	
-	private void setBoilerTemperature(float temp) {
+	public void setBoilerTemperature(float temp) {
 		boilerTemperature = temp;
 	}
 	
@@ -101,7 +103,7 @@ public class LocomotiveSteam extends Locomotive {
 	    return boilerPressureBar * PressureDisplayType.BarToPsi / getMaxBoilerPSI();
 	}
 	
-	private void setBoilerPressureBar(float pressure) {
+	public void setBoilerPressureBar(float pressure) {
 	    boilerPressureBar = pressure;
 	}
 	
@@ -148,14 +150,17 @@ public class LocomotiveSteam extends Locomotive {
         if (def.isCabCar())
             return 0;
         
-        double reverser = getReverser();
+        float reverser = getReverser();
         if (reverser == 0 || getBoilerPressureBar() == 0 && ConfigBalance.FuelRequired)
             return 0;
-
-        double expansion = 1.05 / (Math.abs(reverser) * (Math.abs(reverser) + 0.05));
+        
+        double speedPerc = speedPercent(speed);
+        float absReverser = getAbsReverser(speedPerc, Math.abs(reverser));
+        
+        double expansion = 1.05 / (absReverser * (absReverser + 0.05));
         double expansionPressure = getChestPressureBar() / expansion * (1 + Math.log(expansion));
-        double backPressure = expansionPressure * Math.log(1 + 2.67 * speedPercent(speed)
-                * Math.abs(reverser) * (def.getCylinderCount() == 3 ? 1.15 : 1));
+        double backPressure = expansionPressure * Math.log(1 + 2.67 * speedPerc
+                * absReverser * (def.getCylinderCount() == 3 ? 1.15 : 1));
         double pressurePercent = (expansionPressure - backPressure) / getMaxChestPressure();
         
         if (pressurePercent <= 0)
@@ -163,8 +168,12 @@ public class LocomotiveSteam extends Locomotive {
         
         return 50445 * def.getCylinderCount() * def.getPistonDiameter(gauge) * def.getPistonDiameter(gauge)
                 * def.getPistonStroke(gauge) * getMaxChestPressure() / def.getWheelDiameter(gauge)
-                * def.getPowerMultiplier() * Math.pow(pressurePercent, 1.5 * (0.3 * Math.abs(reverser) + 0.7))
+                * def.getPowerMultiplier() * Math.pow(pressurePercent, 1.5 * (0.3 * absReverser + 0.7))
                 * ConfigBalance.powerMultiplier * Math.copySign(1, reverser);
+    }
+    
+    private float getAbsReverser(double speed, float reverser) {
+    	return Config.ImmersionConfig.automaticReverser && speed > 0.05 ? Math.min((float) (-0.3f * Math.log(speed) + 0.28f), reverser) : reverser;
     }
     
 	@Override
@@ -172,10 +181,8 @@ public class LocomotiveSteam extends Locomotive {
 		super.onDissassemble();
 		this.setBoilerTemperature(ambientTemperature());
 		this.setBoilerPressureBar(0);
-		
-		for (Integer slot : burnTime.keySet()) {
-			burnTime.put(slot, 0);
-		}
+
+        burnTime.replaceAll((_, _) -> 0);
 	}
     
     private void chestPressureCalc() {
@@ -183,17 +190,18 @@ public class LocomotiveSteam extends Locomotive {
         float throttle = getThrottle();
         if (throttle == 0 && pressure == 0)
             return;
-        
         double speedPercent = speedPercent(super.getCurrentSpeed());
-        pressure += 0.06f * Math.pow(Config.isFuelRequired(gauge) ? getBoilerPressureBar() : (getMaxBoilerPSI() * PressureDisplayType.psiToBar), 0.5f) * throttle * (1 + Math.max(speedPercent, 0.01f));
-
+        // Chest pressure inflow; Idk why but the "* (1 + speedPercent)" is needed
+        pressure += 0.06f * Math.sqrt(Config.isFuelRequired(gauge) ? getBoilerPressureBar() : (getMaxBoilerPSI() * PressureDisplayType.psiToBar)) * throttle * (1 + speedPercent);
+        // Chest pressure outflow through cylinder drains
         if (cylinderDrainsEnabled()) {
-            pressure -= 0.07f;
+            pressure -= 0.05f;
         }
-        
-        pressure -= (0.015f * pressure
-                * Math.abs(getReverser()) * speedPercent * Math.PI * getDefinition().getWheelDiameter(gauge)) + 0.005f;
-
+        // Chest pressure outflow through reverser and speed
+        pressure -= 0.095f * pressure * getAbsReverser(speedPercent, Math.abs(getReverser())) * speedPercent;
+        // Default chest pressure leakage
+        pressure -= 0.005f;
+        // Chest pressure outflow through slipping wheels (fast cylinder movement)
         if (slipping) {
             pressure -= Math.abs(0.3f * simulateWheelSlip());
         }
@@ -211,6 +219,14 @@ public class LocomotiveSteam extends Locomotive {
 		return (getDefinition().cab_forward ? -1 : 1) * super.simulateWheelSlip();
 	}
 
+	@Override
+	public void setup(EntityRollingStockDefinition def, Gauge gauge, String texture) {
+		super.setup(def, gauge, texture);
+		if (def instanceof LocomotiveSteamDefinition steamDef && steamDef.defaultTenderFeed) {
+			//Apply default tender feed setting
+			steamDef.getModel().getControls(ModelComponentType.TENDER_FEED_CONTROL_X).forEach(c -> setControlPosition(c, 1));
+		}
+	}
 
 	@Override
 	public void onTick() {
@@ -237,16 +253,15 @@ public class LocomotiveSteam extends Locomotive {
 
 		EntityCoupleableRollingStock stock = this;
 		CouplerType coupler = getDefinition().cab_forward ? CouplerType.FRONT : CouplerType.BACK;
-		while (coupler != null && stock.getCoupled(coupler) instanceof Tender) {
-			Tender tender = (Tender) stock.getCoupled(coupler);
+		while (coupler != null && stock.getCoupled(coupler) instanceof Tender tender) {
 
-			// Only drain 10mb at a time from the tender
+            // Only drain 10mb at a time from the tender
 			int desiredDrain = 10;
 			if (getTankCapacity().MilliBuckets() - getServerLiquidAmount() >= 10) {
 				theTank.drain(tender.theTank, desiredDrain, false);
 			}
 
-			if (this.getTickCount() % 20 == 0 && this.getDefinition().tender_auto_feed) {
+			if (this.getTickCount() % 20 == 0 && this.isAutoFeedEnabled()) {
 				// Top off stacks
 				for (int slot = 2; slot < this.cargoItems.getSlotCount(); slot ++) {
 					if (BurnUtil.getBurnTime(this.cargoItems.get(slot)) != 0) {
@@ -355,7 +370,7 @@ public class LocomotiveSteam extends Locomotive {
 		if (throttle != 0 && boilerPressurePSI > 0) {
 			double burnableSlots = this.cargoItems.getSlotCount()-2;
 			double maxKCalTick = burnableSlots * coalEnergyKCalTick();
-			double maxPressureTick = maxKCalTick / (this.getTankCapacity().MilliBuckets() / 1000);
+			double maxPressureTick = maxKCalTick / (this.getTankCapacity().MilliBuckets() / 1000.0);
 			maxPressureTick = maxPressureTick * 0.8; // 20% more pressure gen energyCapability to balance heat loss
 			
 			float delta = (float) (throttle * maxPressureTick);
@@ -492,5 +507,25 @@ public class LocomotiveSteam extends Locomotive {
 
 	public void setCylinderDrains(boolean enabled) {
 	    getDefinition().getModel().getControls(ModelComponentType.CYLINDER_DRAIN_CONTROL_X).stream().forEach(c -> setControlPosition(c, enabled ? 1 : 0));
+	}
+
+	public boolean isAutoFeedEnabled() {
+		// This could be optimized to once-per-tick, but I'm not sure that is necessary
+		List<?> autoRefuel = getDefinition().getModel().getControls(ModelComponentType.TENDER_FEED_CONTROL_X);
+												 
+		if (!autoRefuel.isEmpty()) {
+			return autoRefuel.stream().anyMatch(c -> getControlPosition((Control<?>) c) == 1);
+		} else {
+			return getDefinition().defaultTenderFeed;
+		}
+	}
+
+	public void setAutoFeed(boolean enabled) {
+		// This could be optimized to once-per-tick, but I'm not sure that is necessary
+		List<?> autoRefuel = getDefinition().getModel().getControls(ModelComponentType.TENDER_FEED_CONTROL_X);
+
+		for (Object ctrl : autoRefuel) {
+			setControlPosition((Control<?>) ctrl, enabled ? 1 : 0);
+		}
 	}
 }

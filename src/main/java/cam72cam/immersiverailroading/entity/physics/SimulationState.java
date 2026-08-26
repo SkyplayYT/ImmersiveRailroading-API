@@ -12,8 +12,10 @@ import cam72cam.immersiverailroading.library.PhysicalMaterials;
 import cam72cam.immersiverailroading.library.TrackItems;
 import cam72cam.immersiverailroading.physics.MovementTrack;
 import cam72cam.immersiverailroading.thirdparty.trackapi.ITrack;
+import cam72cam.immersiverailroading.tile.TileRail;
 import cam72cam.immersiverailroading.tile.TileRailBase;
 import cam72cam.immersiverailroading.util.BlockUtil;
+import cam72cam.immersiverailroading.thirdparty.trackapi.IRPathingData;
 import cam72cam.immersiverailroading.util.Speed;
 import cam72cam.immersiverailroading.util.VecUtil;
 import cam72cam.mod.entity.boundingbox.IBoundingBox;
@@ -32,11 +34,14 @@ public class SimulationState {
     public double velocity;
     public float yaw;
     public float pitch;
+    public float roll;
     public IBoundingBox bounds;
 
     // Render purposes
     public float yawFront;
     public float yawRear;
+    public float rollFront;
+    public float rollRear;
 
     public Vec3d couplerPositionFront;
     public Vec3d couplerPositionRear;
@@ -58,9 +63,6 @@ public class SimulationState {
     public List<Vec3i> blocksToBreak;
 
     public double directResistance;
-    private static float trainBrake = 0;
-    private static boolean singleReleaseBrake = false;
-    
 
     public Configuration config;
     public boolean dirty = true;
@@ -121,12 +123,18 @@ public class SimulationState {
         public float brakeCylinderPressure;
         private boolean brakeLocked;
         private boolean hasSingleReleaseBrake;
+        public boolean isSingleRelease;
+        private float lastTrainBrake = 0;
         private float brakeSystemEfficiency;
         public boolean hasEpBrake;
         public boolean isLocomotive;
         public float delta;
         public float mainAirReservoir;
         public float mainReservoirSizeFactor;
+        private float angle;
+        private float curveResistanceCoefficient;
+        private float dragCoefficient;
+        private float dragExponent;
 
         public Configuration(EntityCoupleableRollingStock stock) {
             debugID = stock.getDefinitionID();
@@ -156,9 +164,8 @@ public class SimulationState {
 
             this.massKg = stock.getWeight();
 
-            if (stock instanceof Locomotive) {
-                trainBrakePosition = ((Locomotive) stock).getTrainBrakePos();
-                Locomotive locomotive = (Locomotive) stock;
+            if (stock instanceof Locomotive locomotive) {
+                trainBrakePosition = locomotive.getTrainBrakePos();
                 tractiveEffortNewtons = locomotive::getTractiveEffortNewtons;
                 tractiveEffortFactors = locomotive.getThrottle() + (locomotive.getReverser() * 10);
                 desiredBrakePressure = Math.min(locomotive.getMainAirReservoir() * 2 ,Config.ImmersionConfig.brakeMode.equals(BrakeMode.DEFAULT) ?
@@ -179,7 +186,7 @@ public class SimulationState {
 
             float staticFriction = PhysicalMaterials.STEEL.staticFriction(PhysicalMaterials.STEEL);
             this.maximumAdhesionNewtons = massKg * staticFriction * 9.8 * stock.getBrakeAdhesionEfficiency();
-            this.designAdhesionNewtons = stock.getBrakingWeight() * staticFriction * 9.8 * stock.getBrakeSystemEfficiency() * (stock instanceof Locomotive ? 0.75f : 1);
+            this.designAdhesionNewtons = stock.getBrakingWeight() * staticFriction * 9.8 * stock.getBrakeSystemEfficiency();
             this.independentBrake = stock.getIndependentBrake();
             this.handBrakeNewtons = stock.getHandBrake() * 9.8 * 0.05 * stock.getDefinition().getWeight(gauge) * stock.getDefinition().getHandBrakeCoefficient();
             if (stock instanceof LocomotiveDiesel) {
@@ -199,6 +206,12 @@ public class SimulationState {
             this.hasSingleReleaseBrake = stock.getDefinition().hasSingleRealseBrake();
             this.brakeSystemEfficiency = stock.getBrakeSystemEfficiency();
             this.hasEpBrake = stock.getDefinition().hasEpBrake();
+            this.angle = stock.getAngle();
+            this.curveResistanceCoefficient = stock.getCurveCoefficient();
+            this.dragCoefficient = stock.getDragCoefficient();
+            this.dragExponent = stock.getDragExponent();
+            
+            this.isSingleRelease = stock.isSingleRelease;
         }
 
         @Override
@@ -214,7 +227,8 @@ public class SimulationState {
                         Math.abs(handBrakeNewtons - other.handBrakeNewtons) < 0.01 &&
                         Math.abs(dynamicBrakeNewtons - other.dynamicBrakeNewtons) < 0.01 &&
                         Math.abs(trainBrakePressure - other.trainBrakePressure) < 0.01 &&
-                        Math.abs(brakeCylinderPressure - other.brakeCylinderPressure) < 0.01;
+                        Math.abs(brakeCylinderPressure - other.brakeCylinderPressure) < 0.01 &&
+                        isSingleRelease == other.isSingleRelease;
             }
             return false;
         }
@@ -231,6 +245,7 @@ public class SimulationState {
                 (DegreeFuncs.delta(VecUtil.toWrongYaw(stock.getVelocity()), stock.getRotationYaw()) < 90 ? 1 : -1);
         yaw = stock.getRotationYaw();
         pitch = stock.getRotationPitch();
+        roll = stock.getRotationRoll();
 
         interactingFront = stock.getCoupledUUID(EntityCoupleableRollingStock.CouplerType.FRONT);
         interactingRear = stock.getCoupledUUID(EntityCoupleableRollingStock.CouplerType.BACK);
@@ -241,12 +256,14 @@ public class SimulationState {
 
         yawFront = stock.getFrontYaw();
         yawRear = stock.getRearYaw();
+        rollFront = stock.getFrontRoll();
+        rollRear = stock.getRearRoll();
 
         recalculatedAt = position;
 
         calculateCouplerPositions();
 
-        calculateBlockCollisions(Collections.emptyList());
+        calculateBlockCollisions(Collections.emptySet());
         blocksToBreak = Collections.emptyList();
 
         consist = stock.consist;
@@ -261,6 +278,7 @@ public class SimulationState {
         this.velocity = prev.velocity;
         this.yaw = prev.yaw;
         this.pitch = prev.pitch;
+        this.roll = prev.roll;
 
         this.interactingFront = prev.interactingFront;
         this.interactingRear = prev.interactingRear;
@@ -271,6 +289,8 @@ public class SimulationState {
 
         this.yawFront = prev.yawFront;
         this.yawRear = prev.yawRear;
+        this.rollFront = prev.rollFront;
+        this.rollRear = prev.rollRear;
         couplerPositionFront = prev.couplerPositionFront;
         couplerPositionRear = prev.couplerPositionRear;
 
@@ -302,8 +322,12 @@ public class SimulationState {
             Vec3d couplerVecFront = VecUtil.fromWrongYaw(config.couplerDistanceFront - config.offsetFront, yawFront);
             Vec3d couplerVecRear = VecUtil.fromWrongYaw(config.couplerDistanceRear - config.offsetRear, yawRear);
 
-            couplerPositionFront = trackFront.getNextPosition(positionFront, couplerVecFront);
-            couplerPositionRear = trackRear.getNextPosition(positionRear, couplerVecRear);
+            IRPathingData front = new IRPathingData(positionFront, 0);//Roll is meaningless for coupler
+            IRPathingData rear = new IRPathingData(positionRear, 0);
+            trackFront.getNextPosition(front, couplerVecFront, config.gauge.value());
+            trackRear.getNextPosition(rear, couplerVecRear, config.gauge.value());
+            couplerPositionFront = front.getUMCPos();
+            couplerPositionRear = rear.getUMCPos();
             //couplerPositionFront = couplerPositionFront.subtract(position).normalize().scale(Math.abs(config.couplerDistanceFront)).add(position);
             //couplerPositionRear = couplerPositionRear.subtract(position).normalize().scale(Math.abs(config.couplerDistanceRear)).add(position);
         }
@@ -315,7 +339,7 @@ public class SimulationState {
         }
     }
 
-    public void calculateBlockCollisions(List<Vec3i> blocksAlreadyBroken) {
+    public void calculateBlockCollisions(Set<Vec3i> blocksAlreadyBroken) {
         this.collidingBlocks = config.world.blocksInBounds(this.bounds);
         this.trackToUpdate = new ArrayList<>();
         this.interferingBlocks = new ArrayList<>();
@@ -347,7 +371,7 @@ public class SimulationState {
         return next;
     }
 
-    public SimulationState next(double distance, List<Vec3i> blocksAlreadyBroken) {
+    public SimulationState next(double distance, Set<Vec3i> blocksAlreadyBroken) {
         SimulationState next = new SimulationState(this);
         next.moveAlongTrack(distance);
         if (this.position.equals(next.position)) {
@@ -407,27 +431,38 @@ public class SimulationState {
         }
 
         boolean isReversed = distance < 0;
+
         if (isReversed) {
             distance = -distance;
             yawFront += 180;
             yawRear += 180;
+            rollFront = -rollFront;
+            rollRear = -rollRear;
+            roll = -roll;
         }
 
-        Vec3d nextFront = trackFront.getNextPosition(positionFront, VecUtil.fromWrongYaw(distance, yawFront));
-        Vec3d nextRear = trackRear.getNextPosition(positionRear, VecUtil.fromWrongYaw(distance, yawRear));
+        IRPathingData nextFront = new IRPathingData(positionFront, rollFront);
+        IRPathingData nextRear = new IRPathingData(positionRear, rollRear);
+        trackFront.getNextPosition(nextFront, VecUtil.fromWrongYaw(distance, yawFront), config.gauge.value());
+        trackRear.getNextPosition(nextRear, VecUtil.fromWrongYaw(distance, yawRear), config.gauge.value());
+        Vec3d nextFrontPos = nextFront.getUMCPos();
+        Vec3d nextRearPos = nextRear.getUMCPos();
 
-        if (!nextFront.equals(positionFront) && !nextRear.equals(positionRear)) {
-            yawFront = VecUtil.toWrongYaw(nextFront.subtract(positionFront));
-            yawRear = VecUtil.toWrongYaw(nextRear.subtract(positionRear));
+        if (!nextFrontPos.equals(positionFront) && !nextRearPos.equals(positionRear)) {
+            yawFront = VecUtil.toWrongYaw(nextFrontPos.subtract(positionFront));
+            yawRear = VecUtil.toWrongYaw(nextRearPos.subtract(positionRear));
+            rollFront = (float) -nextFront.getRoll();
+            rollRear = (float) -nextRear.getRoll();
 
             // TODO flatten this vector calculation
-            Vec3d deltaCenter = nextFront.subtract(position).scale(config.offsetRear)
-                    .subtract(nextRear.subtract(position).scale(config.offsetFront))
+            Vec3d deltaCenter = nextFrontPos.subtract(position).scale(config.offsetRear)
+                    .subtract(nextRearPos.subtract(position).scale(config.offsetFront))
                     .scale(-1/(config.offsetFront-config.offsetRear));
 
-            Vec3d bogeyDelta = nextFront.subtract(nextRear);
+            Vec3d bogeyDelta = nextFrontPos.subtract(nextRearPos);
             yaw = VecUtil.toWrongYaw(bogeyDelta);
-            pitch = (float) Math.toDegrees(FastMath.atan2(bogeyDelta.y, nextRear.distanceTo(nextFront)));
+            roll = (float) Simulation.calculateRoll(rollFront, rollRear);
+            pitch = (float) Math.toDegrees(FastMath.atan2(bogeyDelta.y, nextRearPos.distanceTo(nextFrontPos)));
             // TODO Rescale fixes issues with curves losing precision, but breaks when correcting stock positions
             position = position.add(deltaCenter/*.normalize().scale(distance)*/);
         }
@@ -435,17 +470,24 @@ public class SimulationState {
         if (isReversed) {
             yawFront += 180;
             yawRear += 180;
+            rollFront = -rollFront;
+            rollRear = -rollRear;
+            roll = - roll;
         }
 
         if (isTable) {
             yawFront = yaw;
             yawRear = yaw;
+            rollFront = roll;
+            rollRear = roll;
         }
 
         // Fix bogeys pointing in opposite directions
         if (DegreeFuncs.delta(yawFront, yaw) > 90 || DegreeFuncs.delta(yawFront, yawRear) > 90) {
             yawFront = yaw;
             yawRear = yaw;
+            rollFront = roll;
+            rollRear = roll;
         }
     }
 
@@ -459,8 +501,7 @@ public class SimulationState {
     }
     
     private float calculateBrakePressure() {
-        float cylinderPressure = config.brakeCylinderPressure;
-        cylinderPressure = config.hasPressureBrake ? Math.min(Config.ImmersionConfig.brakeMode.equals(BrakeMode.DEFAULT) ?
+        float cylinderPressure = config.hasPressureBrake ? Math.min(Config.ImmersionConfig.brakeMode.equals(BrakeMode.DEFAULT) ?
                 1 - config.trainBrakePressure : (1 - config.trainBrakePressure) / 0.3f, 1) : 0;
         if (!config.brakeLocked) {
             cylinderPressure = 0;
@@ -470,14 +511,15 @@ public class SimulationState {
         }
         if (config.hasSingleReleaseBrake) {
             float currTrainBrake = config.trainBrakePressure;
-            if (currTrainBrake > trainBrake && !singleReleaseBrake) {
-                singleReleaseBrake = true;
+
+            if (currTrainBrake > config.lastTrainBrake && !config.isSingleRelease && config.lastTrainBrake != 0) {
+                config.isSingleRelease = true;
             }
-            if (singleReleaseBrake && config.trainBrakePressure >= 1) {
-                singleReleaseBrake = false;
-            }  
-            trainBrake = currTrainBrake;
-            if (singleReleaseBrake) {
+            if (config.isSingleRelease && config.trainBrakePressure >= 1) {
+                config.isSingleRelease = false;
+            }
+            config.lastTrainBrake = currTrainBrake;
+            if (config.isSingleRelease) {
                 cylinderPressure = config.brakeCylinderPressure - 0.01f;
             }
         }
@@ -493,14 +535,13 @@ public class SimulationState {
         double startingFriction = velocity == 0 ? 0.005 * defaultNewtons : 0;
         // TODO This is kinda directional?
         double blockResistanceNewtons = interferingResistance * 1000 * Config.ConfigDamage.blockHardness;
+        // r = 60 / angle -> R ~= 0.012 [0.005] * angle * c * N
+        double curveResistanceNewtons = 0.005f * config.angle * config.curveResistanceCoefficient * defaultNewtons;
+        // R = 0.5 * Cd * rho * A * v^2 = 0.5 * Cd * 1.25 * gauge / 1.435 * 10 * v^2 = 4.355 * Cd * gauge * v^2 [^1.6]
+        double dragResistanceNewtons = 4.355f * config.dragCoefficient * config.gauge.value() * Math.pow(Math.abs(Speed.fromMinecraft(velocity).metric()), config.dragExponent);
 
-        //Gauge gauge = config.gauge;
-        //double yawDelta = DegreeFuncs.delta(config.stock.getFrontYaw(), config.stock.getRearYaw()) /
-        //        Math.abs(config.stock.getDefinition().getBogeyFront(gauge) - config.stock.getDefinition().getBogeyRear(gauge));
-        //
-        double curveResistanceNewtons = 0; // 0.0034 * (0.72 * gauge.value() + 0.47 * config.stock.getDefinition().getRigidWheelbase()) * yawDelta * defaultNewtons;
-        
-        double brakeCylinderNewtons = Math.max(config.designAdhesionNewtons * calculateBrakePressure(), config.handBrakeNewtons);
+        float brakePressure = calculateBrakePressure();
+        double brakeCylinderNewtons = Math.max(config.designAdhesionNewtons * brakePressure, config.handBrakeNewtons);
         double dynamicBrakeNewtons = config.dynamicBrakeNewtons;
         double magnetBrakeNewtons = config.magnetBrakeNewtons;
         
@@ -508,7 +549,7 @@ public class SimulationState {
         if (brakeCylinderNewtons + dynamicBrakeNewtons> config.maximumAdhesionNewtons && Math.abs(velocity) > 0.01) {
             // WWWWWHHHEEEEE!!! SLIDING!!!!
             double kineticFriction = PhysicalMaterials.STEEL.kineticFriction(PhysicalMaterials.STEEL);
-            brakeCylinderNewtons = kineticFriction * defaultNewtons * config.brakeSystemEfficiency * calculateBrakePressure();
+            brakeCylinderNewtons = kineticFriction * defaultNewtons * config.brakeSystemEfficiency * brakePressure;
             dynamicBrakeNewtons *= kineticFriction;
             this.sliding = true;
         }
@@ -516,11 +557,9 @@ public class SimulationState {
         brakeCylinderNewtons *= Config.ConfigBalance.brakeMultiplier;
         dynamicBrakeNewtons *= Config.ConfigBalance.brakeMultiplier;
         magnetBrakeNewtons *= Config.ConfigBalance.brakeMultiplier;
-        
-        if (config.trainBrakePressure > 0.9999)
-            config.trainBrakePressure = 1;
 
         if (ConfigDebug.debugLogging) {
+        	System.out.println("Stock: " + config.debugID);
             System.out.println("Rolling Resistance: " + rollingResistanceNewtons);
             System.out.println("Block Resistance: " + blockResistanceNewtons);
             System.out.println("Brake Cylinder: " + brakeCylinderNewtons);
@@ -528,17 +567,18 @@ public class SimulationState {
             System.out.println("Starting Resistance: " + startingFriction);
             System.out.println("Dynamic Brake: " + dynamicBrakeNewtons);
             System.out.println("Magnetic Brake: " + magnetBrakeNewtons);
-            System.out.println("Curve Resistance: " + curveResistanceNewtons); 
+            System.out.println("Curve Resistance: " + curveResistanceNewtons);
+            System.out.println("Drag Resistance: " + dragResistanceNewtons);
+            System.out.println("--------");
         }
         
         return rollingResistanceNewtons + blockResistanceNewtons + brakeCylinderNewtons
-                + directResistance + startingFriction + dynamicBrakeNewtons + 
-                magnetBrakeNewtons + curveResistanceNewtons;
+                + directResistance + startingFriction + dynamicBrakeNewtons + magnetBrakeNewtons
+                + curveResistanceNewtons + dragResistanceNewtons;
     }
 
     private boolean checkTileType(TileRailBase base, TrackItems type) {
-        return base != null
-                && base.getParentTile() != null
-                && base.getParentTile().info.settings.type == type;
+    	TileRail parent = base.getParentTile();
+        return base != null && parent != null && parent.info.settings.type == type;
     }
 }
