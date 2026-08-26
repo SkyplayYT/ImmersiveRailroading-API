@@ -2,9 +2,12 @@ package cam72cam.immersiverailroading.model.part;
 
 import cam72cam.immersiverailroading.ConfigSound;
 import cam72cam.immersiverailroading.entity.EntityMoveableRollingStock;
-import cam72cam.immersiverailroading.render.ExpireableMap;
 import cam72cam.mod.resource.Identifier;
 import cam72cam.mod.sound.ISound;
+import cam72cam.mod.util.DegreeFuncs;
+
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 public class FlangeSound {
@@ -32,7 +35,8 @@ public class FlangeSound {
         }
 
         void effects() {
-            float yawDelta = stock.getAngle();
+            double yawDelta = DegreeFuncs.delta(stock.getFrontYaw(), stock.getRearYaw()) /
+                    Math.abs(stock.getDefinition().getBogeyFront(stock.gauge) - stock.getDefinition().getBogeyRear(stock.gauge));
             double startingFlangeSpeed = 5;
             double kmh = Math.abs(stock.getCurrentSpeed().metric());
             double flangeMinYaw = stock.getDefinition().flange_min_yaw;
@@ -70,18 +74,16 @@ public class FlangeSound {
             sound.stop();
         }
     }
-    private final ExpireableMap<UUID, Sound> sounds = new ExpireableMap<>((key, value) -> value.removed());
+    private final Map<UUID, Sound> sounds = new HashMap<>();
 
     public void effects(EntityMoveableRollingStock stock) {
-    	Sound sound = sounds.get(stock.getUUID());
-    	if (sound == null) {
-    		sound = new Sound(stock);
-    		sounds.put(stock.getUUID(), sound);
-    	}
-        sound.effects();
+        sounds.computeIfAbsent(stock.getUUID(), uuid -> new Sound(stock)).effects();
     }
 
     public void removed(EntityMoveableRollingStock stock) {
-        sounds.remove(stock.getUUID());
+        Sound sound = sounds.remove(stock.getUUID());
+        if (sound != null) {
+            sound.removed();
+        }
     }
 }

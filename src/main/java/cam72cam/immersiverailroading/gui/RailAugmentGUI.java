@@ -19,6 +19,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
 
+import javax.annotation.Nullable;
+
 import static cam72cam.immersiverailroading.gui.ClickListHelper.next;
 
 public class RailAugmentGUI implements IScreen {
@@ -55,16 +57,6 @@ public class RailAugmentGUI implements IScreen {
         this.properties = tileRailBase.getAugmentProperties() == null
                           ? Augment.Properties.empty()
                           : tileRailBase.getAugmentProperties();
-        if(properties.positiveFilter == null) {
-            properties.positiveFilter = "";
-        }
-        if (properties.negativeFilter == null) {
-            properties.negativeFilter = "";
-        }
-        if (properties.doorActuatorFilter == null) {
-            properties.doorActuatorFilter = "";
-        }
-        
         scriptDef = LuaAugmentDefinition.scriptDef;
         if (tileRailBase.selectedScript != null) {
             scriptDef.forEach(s -> {
@@ -213,6 +205,15 @@ public class RailAugmentGUI implements IScreen {
     @Override
     public void onClose() {
         if (!this.augment.equals(Augment.LUA_SCRIPTER)) {
+            if(properties.positiveFilter == null) {
+                properties.positiveFilter = "";
+            }
+            if (properties.negativeFilter == null) {
+                properties.negativeFilter = "";
+            }
+            if (properties.doorActuatorFilter == null) {
+                properties.doorActuatorFilter = "";
+            }
             new AugmentFilterChangePacket(pos, properties).sendToServer();
         } else {
             if (selectedScript != null) {
@@ -349,8 +350,8 @@ public class RailAugmentGUI implements IScreen {
     public static class ScriptDef {
         public String name;
         public Identifier script;
-        public String desc = "";
-        public List<String> additional = new ArrayList<String>();
+        public String desc;
+        public List<String> additional;
 
         public ScriptDef(){}
 
@@ -359,12 +360,12 @@ public class RailAugmentGUI implements IScreen {
             this.script = script;
         }
 
-        public ScriptDef setAdditional(List<String> additional) {
+        public ScriptDef setAdditional(@Nullable List<String> additional) {
             this.additional = additional;
             return this;
         }
 
-        public ScriptDef setDesc(String desc) {
+        public ScriptDef setDesc(@Nullable String desc) {
             this.desc = desc;
             return this;
         }

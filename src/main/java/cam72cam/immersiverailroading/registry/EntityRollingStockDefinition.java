@@ -96,12 +96,10 @@ public abstract class EntityRollingStockDefinition {
     private final EnumMap<ModelComponentType, List<ModelComponent>> renderComponents;
     private final List<ItemComponentType> itemComponents;
     private final Function<EntityBuildableRollingStock, float[][]> heightmap;
-    private float[] heightmapRawCache;
-    private TagCompound heightmapMetaCache;
     private final Map<String, LightDefinition> lights = new HashMap<>();
     protected final Map<String, ControlSoundsDefinition> controlSounds = new HashMap<>();
-    private List<Identifier> smokeParticleTextures;
-    private List<Identifier> steamParticleTextures;
+    public Identifier smokeParticleTexture;
+    public Identifier steamParticleTexture;
     private boolean isLinearBrakeControl;
     private GuiBuilder overlay;
     private List<String> extraTooltipInfo;
@@ -114,8 +112,7 @@ public abstract class EntityRollingStockDefinition {
     public double directFrictionCoefficient;
     private int magneticTrackBrake;
     private int speedBrakeSqueal;
-    private float curveResistanceCoefficient;
-    public float dragCoefficient;
+    private float rigidWheelbase;
     
     public SoundDefinition brakeHighSpeedSound;
     public SoundDefinition brakeLowSpeedSound;
@@ -330,8 +327,6 @@ public abstract class EntityRollingStockDefinition {
                     sound.stop();
                 }
             }
-            lastMoveSoundValue.remove(stock.getUUID());
-            wasSoundPressed.remove(stock.getUUID());
         }
     }
 
@@ -525,9 +520,8 @@ public abstract class EntityRollingStockDefinition {
         // Locomotives default to linear brake control
         isLinearBrakeControl = properties.getValue("linear_brake_control").asBoolean();
         speedBrakeSqueal = properties.getValue("speed_brake_squeal").asInteger(45);
-        curveResistanceCoefficient = properties.getValue("curve_friction_coefficient").asFloat(1.0f);
-        dragCoefficient = properties.getValue("drag_friction_coefficient").asFloat(0.02f);
-        
+        rigidWheelbase = properties.getValue("rigid_wheelbase").asFloat(2.5f);
+
         script = data.getValue("script").asIdentifier();
 
         List<DataBlock.Value> fonts = data.getValues("fonts");
@@ -597,35 +591,16 @@ public abstract class EntityRollingStockDefinition {
             extra_tooltip_info.forEach(value -> extraTooltipInfo.add(value.asString()));
         }
 
-        smokeParticleTextures = steamParticleTextures = List.of(DEFAULT_PARTICLE_TEXTURE);
+        smokeParticleTexture = steamParticleTexture = DEFAULT_PARTICLE_TEXTURE;
         DataBlock particles = data.getBlock("particles");
         if (particles != null) {
             DataBlock smoke = particles.getBlock("smoke");
             if (smoke != null) {
-                List<DataBlock.Value> smokeTextures = smoke.getValues("textures");
-                if (smokeTextures != null) {
-                    smokeParticleTextures = smokeTextures.stream().map(val -> new Identifier(val.asString())).toList();
-                    if (smokeParticleTextures.isEmpty()) {
-                        throw new RuntimeException("Please add at least 1 particle texture in smoke textures!");
-                    }
-                } else {
-                    //Legacy
-                    smokeParticleTextures = List.of(new Identifier(smoke.getValue("texture").asString()));
-                }
+                smokeParticleTexture = new Identifier(smoke.getValue("texture").asString());
             }
-
             DataBlock steam = particles.getBlock("steam");
             if (steam != null) {
-                List<DataBlock.Value> steamTextures = steam.getValues("textures");
-                if (steamTextures != null) {
-                    steamParticleTextures = steamTextures.stream().map(val -> new Identifier(val.asString())).toList();
-                    if (steamParticleTextures.isEmpty()) {
-                        throw new RuntimeException("Please add at least 1 particle texture in steam textures!");
-                    }
-                } else {
-                    //Legacy
-                    steamParticleTextures = List.of(new Identifier(steam.getValue("texture").asString()));
-                }
+                steamParticleTexture = new Identifier(steam.getValue("texture").asString());
             }
         }
 
@@ -839,14 +814,8 @@ public abstract class EntityRollingStockDefinition {
 
             return (stock) -> {
                 try {
-                    if (heightmapRawCache == null) {
-                        heightmapRawCache = data.get().floats();
-                    }
-                    if (heightmapMetaCache == null) {
-                        heightmapMetaCache = new TagCompound(meta.get().bytes());
-                    }
-                    float[] raw = heightmapRawCache;
-                    TagCompound tc = heightmapMetaCache;
+                    float[] raw = data.get().floats();
+                    TagCompound tc = new TagCompound(meta.get().bytes());
 
                     int xRes = tc.getInteger("xRes");
                     int zRes = tc.getInteger("zRes");
@@ -1078,24 +1047,6 @@ public abstract class EntityRollingStockDefinition {
         return extraTooltipInfo;
     }
 
-    public Identifier getSmokeParticle() {
-        if (smokeParticleTextures.size() == 1) {
-            //Fast fallback
-            return smokeParticleTextures.getFirst();
-        }
-        int i = ImmersiveRailroading.RANDOM.nextInt(smokeParticleTextures.size());
-        return smokeParticleTextures.get(i);
-    }
-
-    public Identifier getSteamParticle() {
-        if (steamParticleTextures.size() == 1) {
-            //Fast fallback
-            return steamParticleTextures.getFirst();
-        }
-        int i = ImmersiveRailroading.RANDOM.nextInt(steamParticleTextures.size());
-        return steamParticleTextures.get(i);
-    }
-
     public double getSwayMultiplier() {
         return swayMultiplier;
     }
@@ -1155,11 +1106,7 @@ public abstract class EntityRollingStockDefinition {
         return speedBrakeSqueal;
     }
     
-    public float getCurveCoefficient() {
-        return curveResistanceCoefficient;
-    }
-    
-    public float getDragCoefficient() {
-        return dragCoefficient;
+    public float getRigidWheelbase() {
+        return rigidWheelbase;
     }
 }

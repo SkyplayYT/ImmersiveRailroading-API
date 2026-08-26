@@ -41,7 +41,6 @@ public class SteamLocomotiveModel extends LocomotiveModel<LocomotiveSteam, Locom
 
         addControl(provider, ModelComponentType.WHISTLE_CONTROL_X);
         addControl(provider, ModelComponentType.CYLINDER_DRAIN_CONTROL_X);
-        addControl(provider, ModelComponentType.TENDER_FEED_CONTROL_X);
     }
 
     @Override

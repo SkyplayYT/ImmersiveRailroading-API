@@ -18,8 +18,6 @@ public class RailBaseOverlayRender {
 		Vec3i placePos = new Vec3i(info.placementInfo.placementPosition).add(pos);
 
 		for (TrackBase base : tracks) {
-			//Base's origin is always zero...
-			base.overrideBuilderPos(placePos);
 			boolean canPlace = base.canPlaceTrack();
 			if (!canPlace) {
 				Vec3i tpos = base.getPos();

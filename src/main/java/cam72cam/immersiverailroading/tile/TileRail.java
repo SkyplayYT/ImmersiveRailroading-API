@@ -26,8 +26,6 @@ import java.util.List;
 public class TileRail extends TileRailBase {
 	@TagField("info")
 	public RailInfo info;
-	private RailInfo cachedRenderInfo;
-	private RailInfo cachedRenderInfoSource;
 
 	@TagField("tableIndex")
 	private int tableIndex;
@@ -36,14 +34,13 @@ public class TileRail extends TileRailBase {
 	private List<ItemStack> drops;
 
 	private IBoundingBox boundingBox;
-	
 	@Override
     public IBoundingBox getRenderBoundingBox() {
 		if (info == null) {
 			return IBoundingBox.ORIGIN;
 		}
 		if (boundingBox == null) {
-			int length = (int) info.settings.getValidSize();
+			int length = info.settings.length;
 			if (info.settings.type == TrackItems.CUSTOM && !info.customInfo.placementPosition.equals(info.placementInfo.placementPosition)) {
 				length = (int) info.customInfo.placementPosition.distanceTo(info.placementInfo.placementPosition);
 			}
@@ -54,17 +51,6 @@ public class TileRail extends TileRailBase {
 			boundingBox = IBoundingBox.ORIGIN.grow(new Vec3d(length, length, length));
 		}
 		return boundingBox;
-	}
-	
-	public RailInfo getRenderInfo() {
-	    if (info.settings.type != TrackItems.SWITCH) {
-	        return info;
-	    }
-	    if (cachedRenderInfo == null || cachedRenderInfoSource != info) {
-	        cachedRenderInfo = info.withSettings(b -> b.type = TrackItems.STRAIGHT);
-	        cachedRenderInfoSource = info;
-	    }
-	    return cachedRenderInfo;
 	}
 	
 	@Override
@@ -267,11 +253,11 @@ public class TileRail extends TileRailBase {
 	}
 
 	@Override
-	public double[] getTrackGauges() {
+	public double getTrackGauge() {
 		if (info == null) {
-			return new double[]{0};
+			return 0;
 		}
-		return new double[]{info.settings.gauge.value()};
+		return info.settings.gauge.value();
 	}
 
 

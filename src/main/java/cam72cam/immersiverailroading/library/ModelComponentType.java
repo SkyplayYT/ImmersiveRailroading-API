@@ -115,13 +115,10 @@ public enum ModelComponentType {
 	CYLINDER_DRAIN_CONTROL_X("(CYLINDER|DRAIN)_(COCK|EXHAUST)_CONTROL_#ID#"),
 	SANDING_CONTROL_X("(SANDING|SAND)_CONTROL_#ID#"),
 	COMPRESSOR_CONTROL_X("COMPRESSOR_CONTROL_#ID#"),
-	TENDER_FEED_CONTROL_X("TENDER_FEED_#ID#"),
-	EMERGENCY_X("EMERGENCY_#ID#"),
 
 	// Gauges
 	GAUGE_LIQUID_X("GAUGE_LIQUID_#ID#"),
 	GAUGE_SPEED_X("GAUGE_SPEED_#ID#"),
-	GAUGE_REAL_SPEED_X("GAUGE_REAL_SPEED_#ID#"),
 	GAUGE_TEMPERATURE_X("GAUGE_TEMPERATURE_#ID#"),
 	GAUGE_BOILER_PRESSURE_X("GAUGE_BOILER_PRESSURE_#ID#"),
 	GAUGE_THROTTLE_X("GAUGE_THROTTLE_#ID#"),
@@ -139,7 +136,6 @@ public enum ModelComponentType {
     GAUGE_MAGNETIC_BRAKE_X("GAUGE_MAGNETIC_BRAKE_#ID#"),
     GAUGE_SANDING_X("GAUGE_SANDING_#ID#"),
     GAUGE_SLIPPING_X("GAUGE_SLIPPING_#ID#"),
-    GAUGE_EMERGENCY_X("GAUGE_EMERGENCY_#ID#"),
 
 	TEXTFIELD_X("TEXTFIELD"),
 
@@ -176,7 +172,6 @@ public enum ModelComponentType {
 			case BELL_CONTROL_X:
 			case WHISTLE_CONTROL_X:
 			case HORN_CONTROL_X:
-			case TENDER_FEED_CONTROL_X:
 				//Remove _CONTROL
 				primary = primary.substring(0, primary.length() - 8);
 				//Fallthrough
@@ -191,7 +186,6 @@ public enum ModelComponentType {
 			case ENGINE_START_X:
 			case SANDING_CONTROL_X:
 			case COMPRESSOR_CONTROL_X:
-			case EMERGENCY_X:
 				return TextUtil.translate("part.immersiverailroading:controls." + primary.toLowerCase(Locale.ROOT));
             default:
 				//Unexpected behaviour
