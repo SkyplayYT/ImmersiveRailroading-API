@@ -1,26 +1,19 @@
 package cam72cam.immersiverailroading.util;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 import java.util.stream.Collectors;
 
-import cam72cam.immersiverailroading.entity.EntityMoveableRollingStock;
-import cam72cam.immersiverailroading.entity.EntityRollingStock;
-import cam72cam.immersiverailroading.entity.EntityScriptableRollingStock;
-import cam72cam.immersiverailroading.entity.physics.Simulation;
+import cam72cam.immersiverailroading.entity.*;
 import cam72cam.immersiverailroading.items.ItemMultipleUnit;
 import cam72cam.immersiverailroading.items.ItemRollingStock;
 import cam72cam.immersiverailroading.library.ChatText;
 import cam72cam.immersiverailroading.library.Gauge;
 import cam72cam.immersiverailroading.library.ItemComponentType;
 import cam72cam.immersiverailroading.Config.ConfigDebug;
-import cam72cam.immersiverailroading.entity.EntityBuildableRollingStock;
 import cam72cam.immersiverailroading.entity.EntityCoupleableRollingStock.CouplerType;
 import cam72cam.immersiverailroading.registry.EntityRollingStockDefinition;
 import cam72cam.immersiverailroading.registry.UnitDefinition;
 import cam72cam.immersiverailroading.textfield.TextFieldConfig;
-import cam72cam.immersiverailroading.thirdparty.trackapi.IRPathingData;
 import cam72cam.mod.entity.Player;
 import cam72cam.immersiverailroading.thirdparty.trackapi.ITrack;
 import cam72cam.mod.util.DegreeFuncs;
@@ -38,9 +31,8 @@ public class SpawnUtil {
 		if (initte == null) {
 			return ClickResult.REJECTED;
 		}
-		double trackGauge = initte.getTrackGauges()[0];
+		double trackGauge = initte.getTrackGauge();
 		Gauge gauge = Gauge.from(trackGauge);
-		double spawnGauge = gauge.value();
 		
 		
 		if (!player.isCreative() && gauge != data.gauge) {
@@ -50,30 +42,25 @@ public class SpawnUtil {
 		
 		double offset = def.getCouplerPosition(CouplerType.BACK, gauge) - ConfigDebug.couplerRange;
 		@SuppressWarnings("deprecation")
-		float yaw = player.getYawHead();
+        float yaw = player.getYawHead();
 
 		if (worldIn.isServer) {
 			EntityRollingStock stock = def.spawn(worldIn, new Vec3d(pos).add(0.5, 0.1, 0.5), yaw, gauge, data.texture);
 
-
-			IRPathingData center = new IRPathingData(stock.getPosition(), 0);//only pos is needed
-			initte.getNextPosition(center, VecUtil.fromWrongYaw(-0.1, yaw), spawnGauge);
-			initte.getNextPosition(center, VecUtil.fromWrongYaw(0.1, yaw), spawnGauge);
-			initte.getNextPosition(center, VecUtil.fromWrongYaw(offset, yaw), spawnGauge);
-			stock.setPosition(center.getUMCPos());
+			Vec3d center = stock.getPosition();
+			center = initte.getNextPosition(center, VecUtil.fromWrongYaw(-0.1, yaw));
+			center = initte.getNextPosition(center, VecUtil.fromWrongYaw(0.1, yaw));
+			center = initte.getNextPosition(center, VecUtil.fromWrongYaw(offset, yaw));
+			stock.setPosition(center);
 
 			if (stock instanceof EntityMoveableRollingStock) {
 				EntityMoveableRollingStock moveable = (EntityMoveableRollingStock)stock;
-				ITrack centerte = ITrack.get(worldIn, center.getUMCPos(), true);
+				ITrack centerte = ITrack.get(worldIn, center, true);
 				if (centerte != null) {
 					float frontDistance = moveable.getDefinition().getBogeyFront(gauge);
 					float rearDistance = moveable.getDefinition().getBogeyRear(gauge);
-					IRPathingData frontTemp = center.clone();
-					IRPathingData rearTemp = center.clone();
-					centerte.getNextPosition(frontTemp, VecUtil.fromWrongYaw(frontDistance, yaw), spawnGauge);
-					centerte.getNextPosition(rearTemp, VecUtil.fromWrongYaw(rearDistance, yaw), spawnGauge);
-					Vec3d front = frontTemp.getUMCPos();
-					Vec3d rear = rearTemp.getUMCPos();
+					Vec3d front = centerte.getNextPosition(center, VecUtil.fromWrongYaw(frontDistance, yaw));
+					Vec3d rear = centerte.getNextPosition(center, VecUtil.fromWrongYaw(rearDistance, yaw));
 
 					moveable.setRotationYaw(VecUtil.toWrongYaw(front.subtract(rear)));
 					float pitch = (-VecUtil.toPitch(front.subtract(rear)) - 90);
@@ -86,21 +73,15 @@ public class SpawnUtil {
 
 					ITrack frontte = ITrack.get(worldIn, front, true);
 					if (frontte != null) {
-						IRPathingData frontNext = new IRPathingData(front, 0);
-						frontte.getNextPosition(frontNext, VecUtil.fromWrongYaw(0.1 * gauge.scale(), moveable.getRotationYaw()), spawnGauge);//only pos is needed to provide
-						moveable.setFrontYaw(VecUtil.toWrongYaw(frontNext.getUMCPos().subtract(front)));
-						moveable.setFrontRoll((float) -frontNext.getRoll());
+						Vec3d frontNext = frontte.getNextPosition(front, VecUtil.fromWrongYaw(0.1 * gauge.scale(), moveable.getRotationYaw()));
+						moveable.setFrontYaw(VecUtil.toWrongYaw(frontNext.subtract(front)));
 					}
 
 					ITrack rearte = ITrack.get(worldIn, rear, true);
 					if (rearte != null) {
-						IRPathingData rearNext = new IRPathingData(rear, 0);
-						rearte.getNextPosition(rearNext, VecUtil.fromWrongYaw(0.1 * gauge.scale(), moveable.getRotationYaw()), spawnGauge);
-						moveable.setRearYaw(VecUtil.toWrongYaw(rearNext.getUMCPos().subtract(rear)));
-						moveable.setRearRoll((float) -rearNext.getRoll());
+						Vec3d rearNext = rearte.getNextPosition(rear, VecUtil.fromWrongYaw(0.1 * gauge.scale(), moveable.getRotationYaw()));
+						moveable.setRearYaw(VecUtil.toWrongYaw(rearNext.subtract(rear)));
 					}
-
-					moveable.setRotationRoll((float) Simulation.calculateRoll(moveable.getFrontRoll(), moveable.getRearRoll()));
 				}
 
 				moveable.newlyPlaced = true;
@@ -108,6 +89,36 @@ public class SpawnUtil {
 
 			if (stock instanceof EntityBuildableRollingStock) {
 				((EntityBuildableRollingStock)stock).setComponents(list);
+			}
+
+			if (stock instanceof EntityScriptableRollingStock && !def.textFields.isEmpty()) {
+				EntityScriptableRollingStock scriptable  = (EntityScriptableRollingStock) stock;
+
+				String number = null;
+
+                for (TextFieldConfig config : def.textFields.values()) {
+
+					config.setStock(stock);
+
+					if (config.getAvailableFonts() != null) {
+						config.setFont(config.getAvailableFonts().get(0));
+					}
+
+
+					if (config.isNumberPlate()) {
+
+						List<String> filter = config.getFilterAsList().stream().filter(s -> !def.inputs.containsValue(Collections.singletonMap(config.getObject(), s))).collect(Collectors.toList());
+						if (number == null) {
+							Random random = new Random();
+							number = filter.get(random.nextInt(filter.size()));
+						}
+
+						config.setText(number);
+						def.inputs.put(stock.getUUID(), Collections.singletonMap(config.getObject(), number));
+					}
+
+					scriptable.initTextField(config);
+				}
 			}
 
 
@@ -120,7 +131,8 @@ public class SpawnUtil {
 		}
 		return ClickResult.ACCEPTED;
 	}
-	
+
+
 	public static ClickResult placeUnit(Player player, Player.Hand hand, World worldIn, Vec3i pos, UnitDefinition unit) {
 		Vec3d spawnPos = new Vec3d(pos);
 
@@ -136,9 +148,8 @@ public class SpawnUtil {
 			if (initte == null) {
 				return ClickResult.REJECTED;
 			}
-			double trackGauge = initte.getTrackGauges()[0];
+			double trackGauge = initte.getTrackGauge();
 			Gauge gauge = Gauge.from(trackGauge);
-			double spawnGauge = gauge.value();
 
 
 			if (!player.isCreative() && gauge != data.gauge) {
@@ -162,27 +173,23 @@ public class SpawnUtil {
 
 				EntityRollingStock stock = def.spawn(worldIn, spawnPos.add(0.5, 0.1, 0.5), yaw, gauge, texture);
 
-				IRPathingData center = new IRPathingData(stock.getPosition(), 0);//only pos is needed
-				initte.getNextPosition(center, VecUtil.fromWrongYaw(-0.1, yaw), spawnGauge);
-				initte.getNextPosition(center, VecUtil.fromWrongYaw(0.1, yaw), spawnGauge);
-				initte.getNextPosition(center, VecUtil.fromWrongYaw(offset, yaw), spawnGauge);
-				stock.setPosition(center.getUMCPos());
+				Vec3d center = stock.getPosition();
+				center = initte.getNextPosition(center, VecUtil.fromWrongYaw(-0.1, originalRot));
+				center = initte.getNextPosition(center, VecUtil.fromWrongYaw(0.1, originalRot));
+				center = initte.getNextPosition(center, VecUtil.fromWrongYaw(offset, originalRot));
+				stock.setPosition(center);
 
 				// Set default control group values
 				rollingStock.controlGroup.forEach(stock::setControlPosition);
 
 				if (stock instanceof EntityMoveableRollingStock) {
 					EntityMoveableRollingStock moveable = (EntityMoveableRollingStock)stock;
-					ITrack centerte = ITrack.get(worldIn, center.getUMCPos(), true);
+					ITrack centerte = ITrack.get(worldIn, center, true);
 					if (centerte != null) {
 						float frontDistance = moveable.getDefinition().getBogeyFront(gauge);
 						float rearDistance = moveable.getDefinition().getBogeyRear(gauge);
-						IRPathingData frontTemp = center.clone();
-						IRPathingData rearTemp = center.clone();
-						centerte.getNextPosition(frontTemp, VecUtil.fromWrongYaw(frontDistance, yaw), spawnGauge);
-						centerte.getNextPosition(rearTemp, VecUtil.fromWrongYaw(rearDistance, yaw), spawnGauge);
-						Vec3d front = frontTemp.getUMCPos();
-						Vec3d rear = rearTemp.getUMCPos();
+						Vec3d front = centerte.getNextPosition(center, VecUtil.fromWrongYaw(frontDistance, yaw));
+						Vec3d rear = centerte.getNextPosition(center, VecUtil.fromWrongYaw(rearDistance, yaw));
 
 						moveable.setRotationYaw(VecUtil.toWrongYaw(front.subtract(rear)));
 						float pitch = (-VecUtil.toPitch(front.subtract(rear)) - 90);
@@ -191,25 +198,20 @@ public class SpawnUtil {
 						}
 						moveable.setRotationPitch(pitch);
 
+
 						moveable.setPosition(rear.add(front.subtract(rear).scale(frontDistance / (frontDistance - rearDistance))));
 
 						ITrack frontte = ITrack.get(worldIn, front, true);
 						if (frontte != null) {
-							IRPathingData frontNext = new IRPathingData(front, 0);
-							frontte.getNextPosition(frontNext, VecUtil.fromWrongYaw(0.1 * gauge.scale(), moveable.getRotationYaw()), spawnGauge);//only pos is needed to provide
-							moveable.setFrontYaw(VecUtil.toWrongYaw(frontNext.getUMCPos().subtract(front)));
-							moveable.setFrontRoll((float) -frontNext.getRoll());
+							Vec3d frontNext = frontte.getNextPosition(front, VecUtil.fromWrongYaw(0.1 * gauge.scale(), moveable.getRotationYaw()));
+							moveable.setFrontYaw(VecUtil.toWrongYaw(frontNext.subtract(front)));
 						}
 
 						ITrack rearte = ITrack.get(worldIn, rear, true);
 						if (rearte != null) {
-							IRPathingData rearNext = new IRPathingData(rear, 0);
-							rearte.getNextPosition(rearNext, VecUtil.fromWrongYaw(0.1 * gauge.scale(), moveable.getRotationYaw()), spawnGauge);
-							moveable.setRearYaw(VecUtil.toWrongYaw(rearNext.getUMCPos().subtract(rear)));
-							moveable.setRearRoll((float) -rearNext.getRoll());
+							Vec3d rearNext = rearte.getNextPosition(rear, VecUtil.fromWrongYaw(0.1 * gauge.scale(), moveable.getRotationYaw()));
+							moveable.setRearYaw(VecUtil.toWrongYaw(rearNext.subtract(rear)));
 						}
-						
-						moveable.setRotationRoll((float) Simulation.calculateRoll(moveable.getFrontRoll(), moveable.getRearRoll()));
 					}
 
 					moveable.newlyPlaced = true;
@@ -251,7 +253,7 @@ public class SpawnUtil {
 
 				Vec3d length = VecUtil.fromWrongYaw(def.getCouplerPosition(isFlipped ? CouplerType.BACK : CouplerType.FRONT, stock.gauge), originalRot);
 
-				// player.sendMessage(PlayerMessage.direct(String.format("Placed stock %s at position %s With offset %s", stock.getDefinition().defID, spawnPos, length)));
+//				player.sendMessage(PlayerMessage.direct(String.format("Placed stock %s at position %s With offset %s", stock.getDefinition().defID, spawnPos, length)));
 				worldIn.spawnEntity(stock);
 
 				// TODO Support for non Straight tracks?? I have no clue how tho

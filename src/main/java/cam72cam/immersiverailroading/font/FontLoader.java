@@ -6,6 +6,7 @@ import cam72cam.mod.resource.Identifier;
 import com.google.gson.reflect.TypeToken;
 import com.google.gson.Gson;
 
+import javax.annotation.Nullable;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
@@ -43,7 +44,7 @@ public class FontLoader {
     /**
      * Private method to load a new font from an identifier
      */
-    private static Font loadFont(Identifier font, Identifier jsonLocation) {
+    private static Font loadFont(Identifier font, @Nullable Identifier jsonLocation) {
         Map<Character, Font.Glyph> glyphs = new HashMap<>();
         Identifier json = new Identifier(font.getDomain(), font.getPath().replaceAll(".png", ".json"));
         if (jsonLocation != null) {

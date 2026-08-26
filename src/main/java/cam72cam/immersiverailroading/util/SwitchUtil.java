@@ -8,7 +8,6 @@ import cam72cam.immersiverailroading.tile.TileRailBase;
 import cam72cam.immersiverailroading.track.IIterableTrack;
 import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.math.Vec3i;
-import cam72cam.mod.world.World;
 
 public class SwitchUtil {
 	public static SwitchState getSwitchState(TileRail rail) {
@@ -59,9 +58,7 @@ public class SwitchUtil {
 	}
 
 	public static boolean isRailPowered(TileRail rail) {
-		World railWorld = rail.getWorld();
-		Vec3i railPos = rail.getPos();
-		Vec3d redstoneOrigin = rail.info.placementInfo.placementPosition.add(railPos);
+		Vec3d redstoneOrigin = rail.info.placementInfo.placementPosition.add(rail.getPos());
 		double horiz = rail.info.settings.gauge.scale() * 1.1;
 		if (Config.ConfigDebug.oldNarrowWidth && rail.info.settings.gauge.value() < 1) {
 			horiz = horiz/2;
@@ -70,9 +67,9 @@ public class SwitchUtil {
 		for (int x = -scale; x <= scale; x++) {
 			for (int z = -scale; z <= scale; z++) {
 				Vec3i gagPos = new Vec3i(redstoneOrigin.add(new Vec3d(x, 0, z)));
-				TileRailBase gagRail = railWorld.getBlockEntity(gagPos, TileRailBase.class);
-				if (gagRail != null && (railPos.equals(gagRail.getParent(railWorld)) || gagRail.getReplaced() != null)) {
-					if (railWorld.getRedstone(gagPos) > 0) {
+				TileRailBase gagRail = rail.getWorld().getBlockEntity(gagPos, TileRailBase.class);
+				if (gagRail != null && (rail.getPos().equals(gagRail.getParent()) || gagRail.getReplaced() != null)) {
+					if (rail.getWorld().getRedstone(gagPos) > 0) {
 						return true;
 					}
 				}

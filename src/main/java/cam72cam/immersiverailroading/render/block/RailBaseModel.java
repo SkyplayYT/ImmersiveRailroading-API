@@ -3,6 +3,7 @@ package cam72cam.immersiverailroading.render.block;
 import cam72cam.immersiverailroading.IRItems;
 import cam72cam.immersiverailroading.library.Augment;
 import cam72cam.immersiverailroading.library.Gauge;
+import cam72cam.immersiverailroading.library.TrackItems;
 import cam72cam.immersiverailroading.render.rail.RailRender;
 import cam72cam.immersiverailroading.tile.TileRail;
 import cam72cam.immersiverailroading.tile.TileRailBase;
@@ -31,7 +32,11 @@ public class RailBaseModel {
 		StandardModel model = new StandardModel();
 		if (te instanceof TileRail && ((TileRail) te).info != null) {
 			model.addCustom((state, pt) -> {
-				RailInfo info = ((TileRail) te).getRenderInfo();
+				RailInfo info = ((TileRail) te).info;
+                if (info.settings.type == TrackItems.SWITCH) {
+                    //TODO render switch and don't render turn
+                    info = info.withSettings(b -> b.type = TrackItems.STRAIGHT);
+                }
                 if (info.settings.type.isTable()) {
 					ItemStack held = MinecraftClient.getPlayer().getHeldItem(Player.Hand.PRIMARY);
                 	if (held.is(IRItems.ITEM_TRACK_BLUEPRINT) || held.is(IRItems.ITEM_GOLDEN_SPIKE)) {
@@ -56,7 +61,7 @@ public class RailBaseModel {
 		}
 
 		if (snow != 0) {
-			model.addSnow(snow + (int)(Math.max(height, 0.1) * 8), new Matrix4());
+			model.addSnow(snow + (int)(height * 8), new Matrix4());
 			return model;
 		} else if (!bed.isEmpty() && tileHeight != 0.000001f) {
 			model.addItemBlock(bed, new Matrix4().scale(1, height, 1));

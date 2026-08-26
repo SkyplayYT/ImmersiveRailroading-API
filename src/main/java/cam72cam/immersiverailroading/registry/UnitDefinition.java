@@ -3,6 +3,7 @@ package cam72cam.immersiverailroading.registry;
 import cam72cam.immersiverailroading.util.DataBlock;
 import cam72cam.mod.ModCore;
 
+import javax.annotation.Nullable;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -69,7 +70,7 @@ public class UnitDefinition {
         public String texture;
         public Map<String, Float> controlGroup;
 
-        public Stock(EntityRollingStockDefinition stock, Direction direction, String texture, Map<String, Float> controlGroup) {
+        public Stock(EntityRollingStockDefinition stock, Direction direction, @Nullable String texture, Map<String, Float> controlGroup) {
             this.definition = stock;
             this.direction = direction;
             this.texture = texture;
@@ -82,7 +83,7 @@ public class UnitDefinition {
         FLIPPED,
         RANDOM;
 
-        public static Direction parse(DataBlock.Value val) {
+        public static Direction parse(@Nullable DataBlock.Value val) {
             if (val == null) {
                 return DEFAULT;
             }

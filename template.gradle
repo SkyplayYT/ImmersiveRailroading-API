@@ -3,12 +3,9 @@
 //PLUGINS//
 apply plugin: 'maven-publish'
 
-def buildVersion = System.getenv("BUILDVERSION")
 
-version = buildVersion
-    ? "#MINECRAFT#-#LOADER#-SteamSim-v${buildVersion}"
-    : "#MINECRAFT#-#LOADER#-#VERSION#"
-if (!"release".equalsIgnoreCase(System.getProperty("target")) && buildVersion == null) {
+version = '#MINECRAFT#-#LOADER#-#VERSION#'
+if (!"release".equalsIgnoreCase(System.getProperty("target"))) {
     try {
         version += "-" + 'git rev-parse --verify --short=7 HEAD'.execute().text.trim()
     } catch (Exception ex) {
@@ -16,30 +13,20 @@ if (!"release".equalsIgnoreCase(System.getProperty("target")) && buildVersion ==
     }
 }
 group = "cam72cam.immersiverailroading"
-String archive_base_name = "ImmersiveRailroading"
-base.archivesName = archive_base_name
+archivesBaseName = "ImmersiveRailroading"
 
 //MINECRAFT//
 
 //DEPENDENCIES//
 
-dependencies {
-    umcShade files('libs/luaj-jse-3.0.2.jar')
-}
-
 apply from: 'ImmersiveRailroadingIntegration/dependencies.gradle'
-
-shadowJar {
-    relocate 'org.luaj', "${project.group}.shade.org.luaj"
-}
 
 //JAR//
 
 publishing {
     publications {
         mavenJava(MavenPublication) {
-            artifact remapJar
-            artifactId archive_base_name
+            artifact jar
         }
     }
     repositories {
@@ -53,7 +40,7 @@ publishing {
     }
 }
 
-tasks.register('showBuildInfo') {
+task ('showBuildInfo') {
     doLast {
         String minecraftString = "#MINECRAFT#"
         String minecraftLoader = "#LOADER#"

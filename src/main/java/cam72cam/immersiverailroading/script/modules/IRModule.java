@@ -210,25 +210,21 @@ public class IRModule implements LuaModule {
     public LuaValue getTag(LuaValue tag) {
         return LuaValue.valueOf(stock.tag);
     }
-    
+
     @LuaFunction(module = "IR", name = "getTrain")
     public LuaTable getTrainConsist() {
-    	Collection<EntityCoupleableRollingStock.DirectionalStock> train = stock.getDirectionalTrain(false);
+        List<EntityCoupleableRollingStock> train = stock.getTrain();
 
         LuaTable consist = new LuaTable();
 
-        int i = 1;
-        for (EntityCoupleableRollingStock.DirectionalStock rollingStock : train) {
+        for (EntityCoupleableRollingStock rollingStock : train) {
             LuaTable stockTable = new LuaTable();
 
-            stockTable.set("UUID", LuaValue.valueOf(rollingStock.stock.getUUID().toString()));
-            stockTable.set("stock", ((EntityScriptableRollingStock) rollingStock.stock).getGlobals());
-            stockTable.set("ID", LuaValue.valueOf(rollingStock.stock.getDefinitionID()));
-            stockTable.set("coupledFront", rollingStock.stock.coupledFront != null ? LuaValue.valueOf(rollingStock.stock.coupledFront.toString()) : LuaValue.NIL);
-            stockTable.set("coupledBack", rollingStock.stock.coupledBack != null ? LuaValue.valueOf(rollingStock.stock.coupledBack.toString()) : LuaValue.NIL);
-            stockTable.set("flipped", LuaValue.valueOf(!rollingStock.direction));
+            stockTable.set("UUID", LuaValue.valueOf(stock.getUUID().toString()));
+            stockTable.set("coupledFront", LuaValue.valueOf(stock.coupledFront.toString()));
+            stockTable.set("coupledBack", LuaValue.valueOf(stock.coupledBack.toString()));
 
-            consist.set(i++, stockTable);
+            consist.set(rollingStock.getDefinitionID(), stockTable);
         }
 
         return consist;
@@ -492,44 +488,6 @@ public class IRModule implements LuaModule {
 
         return LuaValue.valueOf(0);
     }
-    
-    @LuaFunction(module = "IR")
-    public void setBoilerTemp(LuaValue value) {
-        if (stock instanceof LocomotiveSteam) {
-            ((LocomotiveSteam) stock).setBoilerTemperature(value.tofloat());
-        }
-    }
-    
-    @LuaFunction(module = "IR")
-    public LuaValue getBoilerTemp() {
-        if (stock instanceof LocomotiveSteam) {
-            LuaValue.valueOf(((LocomotiveSteam) stock).getBoilerTemperature());
-        }
-        return LuaValue.valueOf(0);
-    }
-    
-    @LuaFunction(module = "IR")
-    public void setLiquidCargoAmount(LuaValue amount) {
-        if (stock instanceof FreightTank) {
-            ((FreightTank) stock).setLiquidAmount(amount.toint(), null);
-        }
-    }
-    
-    @LuaFunction(module = "IR")
-    public void setLiquidCargoAmount(LuaValue amount, LuaValue liquid) {
-        if (stock instanceof FreightTank) {
-            ((FreightTank) stock).setLiquidAmount(amount.toint(), liquid.toString());
-        }
-    }
-    
-    @LuaFunction(module = "IR")
-    public LuaValue getLiquidCargoAmount() {
-        if (stock instanceof FreightTank) {
-            LuaValue.valueOf(((FreightTank) stock).getLiquidAmount());
-        }
-        return LuaValue.valueOf(0);
-    }
-
 
     @LuaFunction(module = "IR", name = "getBoilerPressure")
     public LuaValue getBoilerPressureLua() {
@@ -539,12 +497,6 @@ public class IRModule implements LuaModule {
         }
 
         return LuaValue.valueOf(0);
-    }
-    
-    @LuaFunction(module = "IR")
-    public void setBoilerPressure(LuaValue value) {
-        if (stock instanceof LocomotiveSteam)
-            ((LocomotiveSteam) stock).setBoilerPressureBar(value.tofloat());
     }
     
     @LuaFunction(module = "IR")

@@ -6,6 +6,7 @@ import cam72cam.mod.item.ItemStack;
 import cam72cam.mod.math.Vec3d;
 import cam72cam.mod.math.Vec3i;
 import cam72cam.mod.world.World;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,8 +34,8 @@ public class BuilderSwitch extends BuilderBase implements IIterableTrack {
 
 				straightBuilder.positions.retainAll(turnBuilder.positions);
 
-				for (Vec3i straight : straightBuilder.positions) {
-					maxOverlap = Math.max(maxOverlap, new Vec3d(straight.x, 0, straight.z).length());
+				for (Pair<Integer, Integer> straight : straightBuilder.positions) {
+					maxOverlap = Math.max(maxOverlap, new Vec3d(straight.getKey(), 0, straight.getValue()).length());
 				}
 
 				maxOverlap *= 1.2;

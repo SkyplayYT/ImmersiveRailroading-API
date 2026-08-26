@@ -29,7 +29,7 @@ public class Simulation {
     private final World world;
     private final int startTickID;
     List<Map<UUID, SimulationState>> stateMaps;
-    private final Set<Vec3i> blocksAlreadyBroken;
+    private final List<Vec3i> blocksAlreadyBroken;
     List<EntityCoupleableRollingStock> loaded;
 
 
@@ -40,7 +40,7 @@ public class Simulation {
         this.startTickID = ((ServerChronoState)ChronoState.getState(world)).getServerTickID();
 
         stateMaps = new ArrayList<>();
-        blocksAlreadyBroken = new HashSet<>();
+        blocksAlreadyBroken = new ArrayList<>();
 
         for (int i = 0; i < Config.ConfigDebug.physicsFutureTicks; i++) {
             stateMaps.add(new HashMap<>());
@@ -135,17 +135,6 @@ public class Simulation {
                         ImmersiveRailroading.debug("Loading chunk at position %s", pos);
                         // Load the chunk, entities should be directly injected into the world
                         world.getBlock(pos);
-                        newChunksLoaded = true;
-                    }
-                    
-                    if (stock.lastKnownFront != null && !world.isBlockLoaded(stock.lastKnownFront)) {
-                        ImmersiveRailroading.debug("Loading coupled front neighbor at %s", stock.lastKnownFront);
-                        world.getBlock(stock.lastKnownFront);
-                        newChunksLoaded = true;
-                    }
-                    if (stock.lastKnownRear != null && !world.isBlockLoaded(stock.lastKnownRear)) {
-                        ImmersiveRailroading.debug("Loading coupled rear neighbor at %s", stock.lastKnownRear);
-                        world.getBlock(stock.lastKnownRear);
                         newChunksLoaded = true;
                     }
                 }
@@ -394,9 +383,5 @@ public class Simulation {
         }
 
         new Simulation(world);
-    }
-
-    public static double calculateRoll(double frontRoll, double rearRoll) {//TODO: multi bogey support?
-        return (frontRoll + rearRoll) / 2;
     }
 }

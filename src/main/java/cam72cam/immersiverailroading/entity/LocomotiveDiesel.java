@@ -76,9 +76,6 @@ public class LocomotiveDiesel extends Locomotive {
 	}
 
 	public void setTurnedOn(boolean value) {
-		if (getEmergency() && value) {
-			return;
-		}
 		turnedOn = value;
 		getDefinition().getModel().getControls(ModelComponentType.ENGINE_START_X).stream().forEach(c -> setControlPosition(c, turnedOn ? 1 : 0));
 	}
@@ -208,6 +205,11 @@ public class LocomotiveDiesel extends Locomotive {
 		    break;
 		}
 	}
+	
+    @Override
+    public float getThrottleDelta() {
+        return 1F / this.getDefinition().getThrottleNotches();
+    }
 
 	@Override
 	public boolean providesElectricalPower() {
@@ -388,7 +390,7 @@ public class LocomotiveDiesel extends Locomotive {
 	public void onDragRelease(Control<?> component) {
 		super.onDragRelease(component);
 		if (component.part.type == ModelComponentType.ENGINE_START_X) {
-			setTurnedOn(getDefinition().getModel().getControls(ModelComponentType.ENGINE_START_X).stream().allMatch(c -> getControlPosition(c) == 1));
+			turnedOn = getDefinition().getModel().getControls(ModelComponentType.ENGINE_START_X).stream().allMatch(c -> getControlPosition(c) == 1);
 		}
 		if (component.part.type == ModelComponentType.REVERSER_X) {
 			// Make sure reverser is sync'd
@@ -461,13 +463,5 @@ public class LocomotiveDiesel extends Locomotive {
 	@Override
 	public boolean getEngineState() {
 		return isTurnedOn();
-	}
-	
-	@Override
-	public void setEmergency(boolean emergency) {
-		super.setEmergency(emergency);
-		if (emergency) {
-			setTurnedOn(false);
-		}
 	}
 }

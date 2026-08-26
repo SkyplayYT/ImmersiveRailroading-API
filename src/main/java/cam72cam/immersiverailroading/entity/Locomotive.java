@@ -9,7 +9,6 @@ import cam72cam.immersiverailroading.library.*;
 import cam72cam.immersiverailroading.model.part.Control;
 import cam72cam.immersiverailroading.physics.MovementTrack;
 import cam72cam.immersiverailroading.registry.LocomotiveDefinition;
-import cam72cam.immersiverailroading.remotecontrol.RemoteControlData;
 import cam72cam.immersiverailroading.thirdparty.trackapi.ITrack;
 import cam72cam.immersiverailroading.tile.TileRailBase;
 import cam72cam.immersiverailroading.util.MathUtil;
@@ -26,6 +25,7 @@ import java.util.OptionalDouble;
 import java.util.UUID;
 
 public abstract class Locomotive extends FreightTank{
+	private static final float throttleDelta = 0.04f;
 	public int brakeCooldown;
 	
 	@TagField("deadMansSwitch")
@@ -48,10 +48,6 @@ public abstract class Locomotive extends FreightTank{
 	
 	private boolean fullBrake = false;
 	private boolean emergencyBrake = false;
-	
-	@TagSync
-	@TagField("EMERGENCY")
-	private boolean emergency = false;
 	
 	// TODO How many decimal places?
     @TagSync(floatPrecision = 5)
@@ -90,12 +86,11 @@ public abstract class Locomotive extends FreightTank{
 	@TagSync
     @TagField("slipping")
     public boolean slipping = false;
-	private double cachedWheelSlipDelta = 0;
 	
     @TagSync
     @TagField("sanding")
     public boolean isSanding = false;
-    public boolean sandingKey = false;
+    private boolean sandingKey = false;
     private int sandingKeyTimeout = 0;
     private int sandTime = 0;
 
@@ -291,7 +286,7 @@ public abstract class Locomotive extends FreightTank{
             emergencyBrake = false;
 			break;
 		case DEAD_MANS_SWITCH:
-			if (deadManChangeTimeout == 0 && getWorld().isServer) {
+			if (deadManChangeTimeout == 0) { 
 				deadMansSwitch = !deadMansSwitch;
 				if (deadMansSwitch) {
 					source.sendMessage(ChatText.DEADMANS_SWITCH_ENABLED.getMessage());
@@ -320,7 +315,7 @@ public abstract class Locomotive extends FreightTank{
 
 
 	protected float getReverserDelta() {
-		return 1f / getDefinition().getReverserNotches();
+		return 0.04f;
 	}
 
 	@SuppressWarnings("incomplete-switch")
@@ -383,8 +378,6 @@ public abstract class Locomotive extends FreightTank{
 		    setControlPosition(control, 0.5f);
 		} else if (control.part.type.equals(ModelComponentType.COMPRESSOR_CONTROL_X)) {
             compressorActive = getControlPosition(control) > 0.5f;
-		} else if (control.part.type.equals(ModelComponentType.EMERGENCY_X)) {
-			setEmergency(getControlPosition(control) > 0.5);
 		}
 	}
 
@@ -504,12 +497,9 @@ public abstract class Locomotive extends FreightTank{
 		        brakeCooldown--;
 		    }
 			
-			if (deadMansSwitch && !this.getCurrentSpeed().isZero()) {
-				boolean hasDriverOnTrain = getTrain().stream()
-											 .filter(t -> t instanceof Locomotive || t instanceof Tender)
-											 .flatMap(t -> t.getPassengers().stream())
-											 .anyMatch(Entity::isPlayer);
-				if (!hasDriverOnTrain) {
+			if (deadMansSwitch && !getCurrentSpeed().isZero()) {
+				boolean hasDriver = this.getPassengers().stream().anyMatch(Entity::isPlayer);
+				if (!hasDriver) {
 					this.setThrottle(0);
 					this.setTrainBrake(1);
 				}
@@ -557,12 +547,17 @@ public abstract class Locomotive extends FreightTank{
             if (!providesElectricalPower() && getTrainBrakePos() == 1 && getMainAirReservoir() > 0) {
                 mainAirReservoir(-0.001f);
             }
-            
-            if (getTickCount() % 5 == 0) {
-            	isSanding = (sandingKey || isSandingWidgetActive()) && !(this instanceof HandCar);
-            }
-		} else {
-			if (isSanding) {
+		}
+
+        this.distanceTraveled += simulateWheelSlip();
+        
+        isSanding = (sandingKey || isSandingWidgetActive()) && !(this instanceof HandCar);
+        if (sandingKeyTimeout > 0) {
+            sandingKeyTimeout--;
+        }
+        
+        if (getWorld().isClient) {
+            if (isSanding) {
                 ItemStack stack = this.cargoItems.get(2);
                 if (sandTime == 0) {
                     stack.setCount(stack.getCount() - 1);
@@ -576,13 +571,6 @@ public abstract class Locomotive extends FreightTank{
             if (getTickCount() % 10 == 0) {
                 trainBrakeDelta();
             }
-		}
-		
-		cachedWheelSlipDelta = simulateWheelSlip();
-        this.distanceTraveled += getWheelSlipDelta();
-        
-        if (sandingKeyTimeout > 0) {
-            sandingKeyTimeout--;
         }
 	}
     
@@ -597,19 +585,14 @@ public abstract class Locomotive extends FreightTank{
 	@Override
 	public Speed getCurrentSpeed() {
 	    return slipping ? Speed.fromMinecraft((super.getCurrentSpeed().minecraft()
-	            + getWheelSlipDelta())) : super.getCurrentSpeed();
-	}
-	
-	@Override
-	public Speed getRealSpeed() {
-		return super.getCurrentSpeed();
+	            + simulateWheelSlip())) : super.getCurrentSpeed();
 	}
 
 	/** Force applied between the wheels and the rails */
 	public abstract double getAppliedTractiveEffort(Speed speed);
 
 	/** Maximum force that can be between the wheels and the rails before it slips */
-    protected final double getStaticTractiveEffort() {
+    protected final double getStaticTractiveEffort() {        
         return getDefinition().getScriptedStartingTractionNewtons(gauge, this)
                 * Config.ConfigBalance.tractionMultiplier * adhesionCoefficient();
     }
@@ -633,10 +616,6 @@ public abstract class Locomotive extends FreightTank{
         
         double adhesionFactor = appliedTractiveEffort / staticTractiveEffort;
         return Math.copySign((adhesionFactor) / 5, getReverser());
-    }
-    
-    public double getWheelSlipDelta() {
-    	return cachedWheelSlipDelta;
     }
 	
     public double getTractiveEffortNewtons(Speed speed) {
@@ -721,7 +700,7 @@ public abstract class Locomotive extends FreightTank{
 	}
 	
 	public float getThrottleDelta() {
-	    return 1f / getDefinition().getThrottleNotches();
+	    return throttleDelta;
 	}
 	
 	public float getBrakeDelta() {
@@ -927,40 +906,4 @@ public abstract class Locomotive extends FreightTank{
     public void setSanding(boolean sanding) {
         isSanding = sanding;
     }
-    
-    public void setEmergency(boolean emergency) {
-    	if (emergency) {
-        	setThrottle(0);
-        	setTrainBrake(1);
-        	this.emergency = true;
-        	if (!getCurrentSpeed().isZero()) {
-        		setSanding(true);
-        	} else {
-        		setSanding(false);
-        	}
-    	} else {
-    		this.emergency = false;
-    	}
-    }
-    
-    public boolean getEmergency() {
-    	return emergency;
-    }
-    
-	public RemoteControlData getRemoteControlData() {
-		RemoteControlData data = new RemoteControlData();	    
-	    data.throttle = getThrottle();
-	    data.brakePressure = getBrakePressure();
-	    data.indBrake = getIndependentBrake();
-	    data.reverser = getReverser();
-	    data.speed = getCurrentSpeed();
-	    data.emergency = getEmergency();
-	    data.horn = hornPull;
-	    data.sanding = sandingKey;
-	    data.tractiveEffort = getCurrentTractiveEffort();
-	    data.brakeCylPressure = getBrakeCylinderPressure();
-	    data.engine = getEngineState();
-
-	    return data;
-	}
 }

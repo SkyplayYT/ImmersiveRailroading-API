@@ -31,6 +31,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import javax.annotation.Nullable;
 
 public class EntityRollingStock extends CustomEntity implements ITickable, IClickable, IKillable {
 	@TagField("defID")
@@ -48,12 +49,9 @@ public class EntityRollingStock extends CustomEntity implements ITickable, IClic
 			.translate(this.getPosition().x, this.getPosition().y, this.getPosition().z)
 			.rotate(Math.toRadians(180 - this.getRotationYaw()), 0, 1, 0)
 			.rotate(Math.toRadians(this.getRotationPitch()), 1, 0, 0)
-			.rotate(Math.toRadians(this.getRotationRoll()), 0, 0, 1)
 			.rotate(Math.toRadians(-90), 0, 1, 0)
 			.scale(this.gauge.scale(), this.gauge.scale(), this.gauge.scale())
 	);
-	
-	private EntityRollingStockDefinition cachedDefinition;
 
 	public void setup(EntityRollingStockDefinition def, Gauge gauge, String texture) {
 		this.defID = def.defID;
@@ -100,16 +98,13 @@ public class EntityRollingStock extends CustomEntity implements ITickable, IClic
 	}
 	@SuppressWarnings("unchecked")
     public <T extends EntityRollingStockDefinition> T getDefinition(Class<T> type) {
-		if (cachedDefinition == null) {
-            cachedDefinition = DefinitionManager.getDefinition(defID);
-            if (cachedDefinition == null) {
-            	// This should not be hit, entity should be removed handled by tryJoinWorld
-                throw new RuntimeException(String.format("Definition %s has been removed! This stock will not function!", defID));
-            }
-        }
-        return (T) cachedDefinition;
+		EntityRollingStockDefinition def = DefinitionManager.getDefinition(defID);
+		if (def == null) {
+			// This should not be hit, entity should be removed handled by tryJoinWorld
+			throw new RuntimeException(String.format("Definition %s has been removed!  This stock will not function!", defID));
+		}
+		return (T) def;
 	}
-	
 	public String getDefinitionID() {
 		return this.defID;
 	}
@@ -340,7 +335,7 @@ public class EntityRollingStock extends CustomEntity implements ITickable, IClic
 		return getControlData(control).getRight();
 	}
 	
-	public void setControlPosition(Control<?> control, String controlGroup, float val) {
+	public void setControlPosition(@Nullable Control<?> control, String controlGroup, float val) {
 	    val = MathUtil.clamp(val, 0, 1);
 	    Pair<Boolean, Float> newPair = control != null ? Pair.of(getControlPressed(control), val) : Pair.of(false, val);
 	    Pair<Boolean, Float> oldPair = controlPositions.put(controlGroup, newPair);
